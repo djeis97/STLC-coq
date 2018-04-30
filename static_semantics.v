@@ -1,3 +1,4 @@
+From Coq Require Import ssreflect ssrfun ssrbool.
 Require Import Coq.Strings.String.
 Require Import Coq.Strings.Ascii.
 Require Import Coq.Lists.List.
@@ -44,51 +45,31 @@ Inductive InContext : ℾ -> string -> 𝕋 -> Prop :=
 where "a ∷ b ∈ c" := (InContext c a b) : LangContext_scope.
 Open Scope LangContext_scope.
 
-Lemma InContextInverse : forall {Γ s τ}, s∷τ ∈ Γ -> s ∉ Γ -> False.
-  intros Γ s τ H H0.
-  induction H; inversion H0.
-  contradiction.
-  all:now apply IHInContext.
+Lemma InContextInverse {Γ s τ} (ing: s∷τ ∈ Γ) (noting: s ∉ Γ) : False.
+  induction ing; inversion noting => //.
 Qed.
 
 Lemma InContextOptions Γ s : (exists τ, s∷τ∈Γ) \/ (s∉Γ).
-  Proof with now constructor.
-  induction Γ.
-  - right...
-  - destruct (string_dec s var) as [ -> | ? ]. 
-    + left.
-      exists typ...
-    + destruct IHΓ as [ (x, ?) | ? ].
-      * left.
-        exists x...
-      * right...
-  - inversion IHΓ1; inversion IHΓ2.
-    all:(left; (inversion H + inversion H0); exists x) + right...
+  elim: Γ => //.
+  - move=> var typ ? [[τ ?] | ?]; case: (string_dec s var) => [ -> | ? ] //.
+  - move=> Γ1 [[τ1 ?] | ?] Γ2 [[τ2 ?] | ?] //.
 Qed.
 
-Lemma InContextUnique : forall {s τ1 τ2 Γ}, s ∷ τ1 ∈ Γ -> s ∷ τ2 ∈ Γ -> τ1=τ2.
-  intros s τ1 τ2 Γ H H0.
-  induction H; inversion H0.
-  - reflexivity.
-  - contradiction.
-  - congruence.
-  - now apply IHInContext.
-  - now apply IHInContext.
-  - now pose (InContextInverse H notInRight).
-  - now pose (InContextInverse inRight notInRight).
-  - now apply IHInContext.
+Lemma InContextUnique {s τ1 τ2 Γ} (τin1: s ∷ τ1 ∈ Γ) (τin2: s ∷ τ2 ∈ Γ) : τ1=τ2.
+  elim: Γ τin1 τin2 => //.
+  - move=> var typ Γ impl; inversion 1; inversion 1 => //.
+  - move=> Γ1 impl1 Γ2 impl2; inversion 1; inversion 1 => //.
+    + case: (InContextInverse inRight notInRight).
+    + case: (InContextInverse inRight notInRight).
 Qed.
 
 Lemma InConsEnvInversion {s τ τ' Γ} : s ∷ τ ∈ (ConsEnv s τ' Γ) -> τ=τ'.
-  intros H.
-  eapply InContextUnique; done.
+  move=> ?; exact: InContextUnique.
 Qed.
 
-Lemma InSubConsEnvInversion {s s' Γ} : s<>s' -> forall {τ τ'}, s ∷ τ ∈ (ConsEnv s' τ' Γ) -> s ∷ τ ∈ Γ.
-  intros H τ τ' H0.
-  inversion H0; done.
+Lemma InSubConsEnvInversion {s s' Γ} (neq : s<>s') {τ τ'} : s ∷ τ ∈ (ConsEnv s' τ' Γ) -> s ∷ τ ∈ Γ.
+  inversion 1 => //.
 Qed.
-
 
 Inductive EquivContext : ℾ -> ℾ -> Prop :=
 | EquivIntro {Γ1 Γ2} : (forall s τ, s ∷ τ ∈ Γ1 <-> s ∷ τ ∈ Γ2) -> EquivContext Γ1 Γ2
@@ -96,108 +77,83 @@ Inductive EquivContext : ℾ -> ℾ -> Prop :=
 | EquivShadow {Γ1 Γ2} Γ' : EquivContext Γ1 Γ2 -> EquivContext (ShadowEnv Γ1 Γ') (ShadowEnv Γ2 Γ').
 
 Lemma InterpretEquivContext' {Γ1 Γ2} : EquivContext Γ1 Γ2 -> forall {s τ}, s ∷ τ ∈ Γ1 -> s ∷ τ ∈ Γ2.
-  intros H s τ H0.
-  induction H.
-  - rewrite <- (H s τ).
-    assumption.
-  - destruct (string_dec s s0) as [-> | neq].
-    + rewrite (InContextUnique H0 (@InConsEnv s0 τ0 Γ1)).
-      constructor.
-    + inversion H0.
-      * congruence.
-      * specialize (IHEquivContext inSub).
-        done.
-  - inversion H0.
-    + done.
-    + specialize (IHEquivContext inLeft).
-      done.
+Proof with done.
+  elim => //.
+  - move=> Γ0 Γ3 rewr s τ; rewrite rewr...
+  - move=> s0 τ0 Γ0 Γ3 EquivSub IH s1 τ1; case: (string_dec s1 s0) => [-> | neq] inH.
+    + rewrite (InContextUnique inH (@InConsEnv s0 τ0 Γ0))...
+    + constructor => //; apply IH.
+      pose inSub := InSubConsEnvInversion neq inH...
+  - move=> Γ0 Γ3 Γ' EquivSub IH s τ; inversion 1 => //.
+    apply IH in inLeft...
 Qed.
 
 Lemma EquivContextRefl Γ : EquivContext Γ Γ.
-  enough (forall s τ, s ∷ τ ∈ Γ <-> s ∷ τ ∈ Γ).
-  done.
-  reflexivity.
+  enough (forall s τ, s ∷ τ ∈ Γ <-> s ∷ τ ∈ Γ); done.
 Qed.
 
 Lemma EquivContextSymm {Γ1 Γ2} : EquivContext Γ1 Γ2 -> EquivContext Γ2 Γ1.
-  induction 1.
-  - symmetry in H.
-    done.
-  - done.
-  - done.
+  elim; done.
 Qed.
 
 Lemma InterpretEquivContext {Γ1 Γ2} : EquivContext Γ1 Γ2 -> forall {s τ}, s ∷ τ ∈ Γ1 <-> s ∷ τ ∈ Γ2.
-  intros H s τ.
+  move=> H s τ.
   split.
-  - apply InterpretEquivContext'.
-    assumption.
-  - apply InterpretEquivContext'.
-    apply EquivContextSymm.
-    assumption.
+  - exact: InterpretEquivContext'.
+  - apply: InterpretEquivContext'; exact: EquivContextSymm.
 Qed.
 
-Lemma EquivContextTrans {Γ1 Γ2 Γ3} : EquivContext Γ1 Γ2 -> EquivContext Γ2 Γ3 -> EquivContext Γ1 Γ3.
-  intros H H0.
-  constructor.
-  intros s τ.
-  rewrite (InterpretEquivContext H).
-  rewrite (InterpretEquivContext H0).
-  reflexivity.
+Lemma EquivContextTrans {Γ1 Γ2 Γ3} (e12 : EquivContext Γ1 Γ2) (e23 : EquivContext Γ2 Γ3) : EquivContext Γ1 Γ3.
+  constructor => s τ; rewrite (InterpretEquivContext e12); rewrite (InterpretEquivContext e23); done.
 Qed.
 
 Lemma EquivContextDoubleElim Γ s τ τ' : (EquivContext (ConsEnv s τ (ConsEnv s τ' Γ)) (ConsEnv s τ Γ)).
-  apply EquivIntro.
-  intros s0 τ0.
-  split; destruct (string_dec s0 s) as [-> | ne].
-  - intros H.
-    rewrite (InConsEnvInversion H).
-    constructor.
-  - intros H.
-    constructor.
-    assumption.
-    exact (InSubConsEnvInversion ne (InSubConsEnvInversion ne H)).
-  - intros H.
-    rewrite (InConsEnvInversion H).
-    constructor.
-  - intros H.
-    constructor.
-    assumption.
-    constructor.
-    assumption.
-    exact (InSubConsEnvInversion ne H).
+  apply EquivIntro => s0 τ0.
+  case: (string_dec s0 s) => [-> | ?]; split => ing.
+  1,2: by rewrite (InConsEnvInversion ing).
+  - constructor => //; exact: (InSubConsEnvInversion _ (InSubConsEnvInversion _ ing)).
+  - constructor => //; constructor => //; exact: (InSubConsEnvInversion _ ing).
 Qed.
 
 Lemma EquivContextReorder {Γ1 Γ2 s s'} :
   (EquivContext Γ1 Γ2) -> s<>s' -> forall τ τ', (EquivContext (ConsEnv s τ (ConsEnv s' τ' Γ1)) (ConsEnv s' τ' (ConsEnv s τ Γ2))).
-  intros H neq τ τ'.
-  apply EquivIntro.
-  intros s0 τ0.
-  split; intros inOne.
-  - destruct (string_dec s0 s) as [-> | nes].
-    + rewrite (InConsEnvInversion inOne).
-      apply (InSubConsEnv neq).
-      apply InConsEnv.
-    + destruct (string_dec s0 s') as [-> | nes'].
-      * pose (InSubConsEnvInversion nes inOne).
-        rewrite (InConsEnvInversion i).
-        done.
-      * apply (InSubConsEnv nes').
-        apply (InSubConsEnv nes).
-        apply (InterpretEquivContext H).
-        exact (InSubConsEnvInversion nes' (InSubConsEnvInversion nes inOne)).
-  - destruct (string_dec s0 s) as [-> | nes].
-    + rewrite (InConsEnvInversion (InSubConsEnvInversion neq inOne)).
-      apply InConsEnv.
-    + destruct (string_dec s0 s') as [-> | nes'].
-      * rewrite (InConsEnvInversion inOne).
-        apply (InSubConsEnv nes).
-        done.
-      * apply (InSubConsEnv nes).
-        apply (InSubConsEnv nes').
-        apply (InterpretEquivContext H).
-        exact (InSubConsEnvInversion nes (InSubConsEnvInversion nes' inOne)).
-Qed.
+Proof with done.
+  move=> H neq τ τ'.
+  constructor 1 => s0 τ0.
+  split; case: (string_dec s0 s) => [-> | nes].
+  - move=> inOne; rewrite (InConsEnvInversion inOne); constructor => //; constructor.
+  - case: (string_dec s0 s') => [<- | nes'] inOne.
+    + inversion inOne => //.
+      rewrite (InConsEnvInversion inSub)...
+    + inversion inOne => //; inversion inSub => //.
+      constructor => //; constructor => //.
+      move: inSub0; rewrite (InterpretEquivContext H)...
+Admitted.
+(*   -  *)
+(*     destruct (string_dec s0 s) as [-> | nes]. *)
+(*     + rewrite (InConsEnvInversion inOne). *)
+(*       apply (InSubConsEnv neq). *)
+(*       apply InConsEnv. *)
+(*     + destruct (string_dec s0 s') as [-> | nes']. *)
+(*       * pose (InSubConsEnvInversion nes inOne). *)
+(*         rewrite (InConsEnvInversion i). *)
+(*         done. *)
+(*       * apply (InSubConsEnv nes'). *)
+(*         apply (InSubConsEnv nes). *)
+(*         apply (InterpretEquivContext H). *)
+(*         exact (InSubConsEnvInversion nes' (InSubConsEnvInversion nes inOne)). *)
+(*   - destruct (string_dec s0 s) as [-> | nes]. *)
+(*     + rewrite (InConsEnvInversion (InSubConsEnvInversion neq inOne)). *)
+(*       apply InConsEnv. *)
+(*     + destruct (string_dec s0 s') as [-> | nes']. *)
+(*       * rewrite (InConsEnvInversion inOne). *)
+(*         apply (InSubConsEnv nes). *)
+(*         done. *)
+(*       * apply (InSubConsEnv nes). *)
+(*         apply (InSubConsEnv nes'). *)
+(*         apply (InterpretEquivContext H). *)
+(*         exact (InSubConsEnvInversion nes (InSubConsEnvInversion nes' inOne)). *)
+(* Qed. *)
 
 Reserved Notation "a '⊢' b '∷' c" (at level 1, no associativity, b at next level).
 

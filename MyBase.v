@@ -1,6 +1,4 @@
-Require Import Coq.Lists.List.
-Require Import String.
-Require Import Basics.
+From Coq Require Import ssreflect ssrfun ssrbool Lists.List String Basics.
 Bind Scope MyListScope with list.
 Reserved Notation "a ∈ b" (at level 1, no associativity).
 Reserved Notation "a ∉ b" (at level 1, no associativity).

@@ -1,3 +1,4 @@
+From Coq Require Import ssreflect ssrfun ssrbool.
 Require Import List.
 Require Import ListSet.
 Require Import String.
@@ -32,18 +33,17 @@ where "s ∈f e" := (InFV s e) : FV_scope.
 Open Scope FV_scope.
 
 Lemma InFVExclusive {s e} : s ∈f e -> s ∉f e -> False.
-  induction e.
-  all: intros ine notine; inversion ine; inversion notine; done.
+  induction e => ine notine; inversion ine; inversion notine; done.
 Qed.
 
 Lemma InFVOptions s e : s ∈f e \/ s ∉f e.
 Proof with done.
-  induction e.
-  - destruct (string_dec s x)...
+  elim e.
+  - move=> x; elim: (string_dec s x)...
   - done.
-  - decompose [or] IHe1; decompose [or] IHe2...
-  - decompose [or] IHe; destruct (string_dec f s); destruct (string_dec x s)...
-  - decompose [or] IHe1; decompose [or] IHe2...
+  - move=> e1 [ine1 | nine1] e2 [ine2 | nine2]...
+  - move=> f x ? ? [sin1 | snin1]; elim: (string_dec f s); elim: (string_dec x s)...
+  - move=> e1 [ine1 | nine1] e2 [ine2 | nine2]...
 Qed.
 
 Inductive InBV : string -> 𝔼 -> Prop :=
@@ -102,32 +102,19 @@ Inductive SafeToSubInto (e : 𝔼) : 𝔼 -> Prop :=
 Axiom AlwaysSafeToSubInto : forall e1 e2, SafeToSubInto e1 e2.
 
 Lemma CASAlways {e1 x e} : SafeToSubInto e1 e -> exists e2, [e1 / x] e = e2.
-  intros H.
-  induction e.
-  - destruct (string_dec x x0) as [-> | neq].
-    + exists e1; done.
-    + exists x0; done.
-  - exists n; done.
-  - inversion H.
-    destruct (IHe1 safe1).
-    destruct (IHe2 safe2).
-    exists (AddExpr x0 x1).
-    done.
-  - inversion H.
-    destruct (IHe safe).
-    destruct (string_dec x f) as [-> | nef].
-    + exists (AbsExpr f x0 τ e).
-      done.
-    + destruct (string_dec x x0) as [-> | nex0].
-      * exists (AbsExpr f x0 τ e).
-        done.
-      * exists (AbsExpr f x0 τ x2).
-        done.
-  - inversion H.
-    destruct (IHe1 safe1).
-    destruct (IHe2 safe2).
-    exists (AppExpr x0 x1).
-    done.
+  elim.
+  - move=> x0; case: (string_dec x x0) => [-> | neq].
+    + exists e1 => //.
+    + exists x0 => //.
+  - move=> n; exists n => //.
+  - move=> e0 e2 ? [x0 ?] ? [x1 ?]; exists (AddExpr x0 x1) => //.
+  - move=> e0 e2 ? [x0 ?] ? [x1 ?]; exists (AppExpr x0 x1) => //.
+  - move=> f x0 τ body fni x0ni safe [x2 ?].
+    case: (string_dec x f) => [-> | nef].
+    + exists (AbsExpr f x0 τ body) => //.
+    + case: (string_dec x x0) => [-> | nex0].
+      * exists (AbsExpr f x0 τ body) => //.
+      * exists (AbsExpr f x0 τ x2) => //.
 Qed.
 
 Definition substitution_list := list (𝔼 * string).
@@ -176,5 +163,5 @@ Inductive AlphaEquiv : 𝔼 -> 𝔼 -> Prop :=
 where "a ≡α b" := (AlphaEquiv a b).
 
 Theorem AlphaEquivSymm {e1 e2} : e1 ≡α e2 -> e2 ≡α e1.
-  induction 1; done.
+  elim => //.
 Qed.
