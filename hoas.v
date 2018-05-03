@@ -1,4 +1,5 @@
 From Coq Require Import ssreflect ssrfun ssrbool.
+Require Import FunInd.
 Require Import List.
 Require Import ListSet.
 Require Import String.
@@ -16,7 +17,8 @@ Inductive NotInFV : string -> 𝔼 -> Prop :=
 | NotFVNatExpr {s} {n : nat} : s ∉f n
 | NotFVAddExpr {s e1 e2} (notInLeft : s ∉f e1) (notInRight : s ∉f e2) : s ∉f (e1 + e2)
 | NotFVAppExpr {s e1 e2} (notInLeft : s ∉f e1) (notInRight : s ∉f e2) : s ∉f (AppExpr e1 e2)
-| NotFVAbsExpru f x τ body {s} (notF : f <> s) (notX : x <> s) (notInBody : s ∉f body) : s ∉f (AbsExpr f x τ body)
+| NotFVAbsExpru f x τ body {s} (notF : f <> s) (notX : x <> s) (notInBody : s ∉f body) :
+    s ∉f (AbsExpr f x τ body)
 | NotFVAbsExprx f x τ body : x ∉f (AbsExpr f x τ body)
 | NotFVAbsExprf f x τ body : f ∉f (AbsExpr f x τ body)
 where "s ∉f e" := (NotInFV s e) : FV_scope.
@@ -25,25 +27,69 @@ Inductive InFV : string -> 𝔼 -> Prop :=
 | FVVarExpr {s} : s ∈f s
 | FVAddExprL {s e1 e2} (inSub: s ∈f e1) : s ∈f (e1 + e2)
 | FVAddExprR {s e1 e2} (inSub: s ∈f e2) : s ∈f (e1 + e2)
-| FVAbsExpr {f x τ body s} (notF : f <> s) (notX : x <> s) (inSub : s ∈f body) : s ∈f (AbsExpr f x τ body)
+| FVAbsExpr {f x τ body s} (notF : f <> s) (notX : x <> s) (inSub : s ∈f body) :
+    s ∈f (AbsExpr f x τ body)
 | FVAppExprL {s e1 e2} (inSub: s ∈f e1) : s ∈f (AppExpr e1 e2)
 | FVAppExprR {s e1 e2} (inSub: s ∈f e2) : s ∈f (AppExpr e1 e2)
 where "s ∈f e" := (InFV s e) : FV_scope.
 
 Open Scope FV_scope.
 
+Fixpoint InFVb string expr :=
+  match expr with
+  | VarExpr s => if (string_dec string s) then true else false
+  | NatExpr _ => false
+  | AddExpr e0 e1 => (InFVb string e0) || (InFVb string e1)
+  | AppExpr e0 e1 => (InFVb string e0) || (InFVb string e1)
+  | AbsExpr f x _ body => if (string_dec string f) then
+                           false
+                         else if (string_dec string x) then
+                                false
+                              else (InFVb string body)
+  end.
+
+Functional Scheme InFVb_rec
+  := Induction for InFVb Sort Set.
+
+Lemma InFVPn {s e} : reflect s ∉f e (~~ InFVb s e).
+  functional induction (InFVb s e) => //=.
+  - by elim_sumbool e0.
+  - by elim_sumbool e0.
+  - case E : (InFVb s e0 || InFVb s e1); constructor.
+    + move/orP: E => [i | i]; move: IHb IHb0; rewrite i //=.
+    + move/norP: E => [/IHb l /IHb0 r] //=.
+  - by elim_sumbool e0.
+  - by elim_sumbool e0; elim_sumbool e1.
+  - by elim_sumbool e0; elim_sumbool e1; case: (~~ InFVb s body) IHb.
+  - case E : (InFVb s e0 || InFVb s e1); constructor.
+    + move/orP: E => [i | i]; move: IHb IHb0; rewrite i //=.
+    + move/norP: E => [/IHb l /IHb0 r] //=.
+Qed.
+
+Lemma InFVP {s e} : reflect s ∈f e (InFVb s e).
+  functional induction (InFVb s e).
+  - by elim_sumbool e0.
+  - by elim_sumbool e0.
+  - done.
+  - case E: (InFVb s e0 || InFVb s e1) => //=; constructor.
+    + move/orP: E => [/IHb l | /IHb0 r] //=.
+    + move/orP/or_not_iff: E => [l r]; inversion 1; move: inSub => //=.
+  - by elim_sumbool e0.
+  - by elim_sumbool e0; elim_sumbool e1.
+  - move: e0 e1 => /sumboolP ne0 /sumboolP ne1; case: (InFVb s body) IHb; done.
+  - case E: (InFVb s e0 || InFVb s e1) => //=; constructor.
+    + move/orP: E => [/IHb l | /IHb0 r] //=.
+    + move/orP/or_not_iff: E => [l r]; inversion 1; move: inSub => //=.
+Qed.
+
 Lemma InFVExclusive {s e} : s ∈f e -> s ∉f e -> False.
-  induction e => ine notine; inversion ine; inversion notine; done.
+  by move => /InFVP ? /InFVPn/negP.
 Qed.
 
 Lemma InFVOptions s e : s ∈f e \/ s ∉f e.
-Proof with done.
-  elim e.
-  - move=> x; elim: (string_dec s x)...
-  - done.
-  - move=> e1 [ine1 | nine1] e2 [ine2 | nine2]...
-  - move=> f x ? ? [sin1 | snin1]; elim: (string_dec f s); elim: (string_dec x s)...
-  - move=> e1 [ine1 | nine1] e2 [ine2 | nine2]...
+  case E: (InFVb s e).
+  - by move/InFVP: E.
+  - by move/InFVPn: E.
 Qed.
 
 Inductive InBV : string -> 𝔼 -> Prop :=

@@ -1,4 +1,5 @@
 From Coq Require Import ssreflect ssrfun ssrbool.
+Require Import FunInd.
 Require Import String.
 Require Import List.
 Require Import ListSet.
@@ -7,6 +8,10 @@ Require Import MyBase.
 Inductive LType : Set :=
 | NatType : LType
 | AbsType (arg ret : LType) : LType.
+
+Lemma LType_dec : forall (τ1 τ2 : LType), {τ1=τ2} + {τ1 <> τ2}.
+  decide equality.
+Defined.
 
 Inductive Expression : Set :=
 | VarExpr (x : string) : Expression
@@ -32,26 +37,21 @@ Inductive EvaluationContext : Set :=
 | EvalContextLApp (E : EvaluationContext) (e : Expression) : EvaluationContext
 | EvalContextRApp (f x : string) (τ : LType) (body : Expression) (E : EvaluationContext) : EvaluationContext.
 
-Inductive EvaluationContextFillsTo : EvaluationContext -> Expression -> Expression -> Prop :=
-| HoleFills {e} : EvaluationContextFillsTo Hole e e
-| LAddFillsTo {E e1 e1' e2} (subFills : EvaluationContextFillsTo E e1 e1')
-  : EvaluationContextFillsTo (EvalContextLAdd E e2) e1 (e1' + e2)
-| RAddFillsTo {n E e2 e2'} (subFills : EvaluationContextFillsTo E e2 e2')
-  : EvaluationContextFillsTo (EvalContextRAdd n E) e2 (n + e2')
-| LAppFillsTo {E e1 e1' e2} (subFills : EvaluationContextFillsTo E e1 e1')
-  : EvaluationContextFillsTo (EvalContextLApp E e2) e1 (AppExpr e1' e2)
-| RAppFillsTo {f x τ body E e2 e2'} (subFills : EvaluationContextFillsTo E e2 e2')
-  : EvaluationContextFillsTo (EvalContextRApp f x τ body E) e2 (AppExpr (AbsExpr f x τ body) e2').
+Reserved Notation "E [ e ]" (at level 1, e at next level).
 
-Lemma EvalContextAlwaysFills {E e} : exists e', EvaluationContextFillsTo E e e'.
-Proof with done.
-  elim: E.
-  - exists e...
-  - move=> ? [x ?] e0; exists (AddExpr x e0)...
-  - move=> n ? [x ?]; exists (AddExpr n x)...
-  - move=> ? [x ?] e0; exists (AppExpr x e0)...
-  - move=> f a τ body ? [x ?]; exists (AppExpr (AbsExpr f a τ body) x)...
-Qed.
+Fixpoint FillEvaluationContext E e :=
+  match E with
+  | Hole => e
+  | EvalContextLAdd E0 e0 => (AddExpr E0[e] e0)
+  | EvalContextRAdd n E0 => (AddExpr n E0[e])
+  | EvalContextLApp E0 e0 => (AppExpr E0[e] e0)
+  | EvalContextRApp f x τ body E0 =>
+    (AppExpr (AbsExpr f x τ body) E0[e])
+  end
+where "E [ e ]" := (FillEvaluationContext E e).
+
+Functional Scheme FillEvaluationContext_ind
+  := Induction for FillEvaluationContext Sort Set.
 
 Bind Scope LType_scope with LType.
 Notation "'ℕ'" := NatType : LType_scope.

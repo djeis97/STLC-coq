@@ -1,4 +1,5 @@
 From Coq Require Import ssreflect ssrfun ssrbool.
+Require Import FunInd.
 Require Import Coq.Strings.String.
 Require Import Coq.Strings.Ascii.
 Require Import Coq.Lists.List.
@@ -28,6 +29,7 @@ Inductive NotInContext : ℾ -> string -> Prop :=
   : s ∉ (ShadowEnv Γ1 Γ2)
 where "a ∉ b" := (NotInContext b a) : LangContext_scope.
 
+
 Reserved Notation "a ∷ b ∈ c" (at level 1, no associativity, b at next level).
 Inductive InContext : ℾ -> string -> 𝕋 -> Prop :=
 | InConsEnv {s τ Γ} : s ∷ τ ∈ (ConsEnv s τ Γ)
@@ -45,29 +47,65 @@ Inductive InContext : ℾ -> string -> 𝕋 -> Prop :=
 where "a ∷ b ∈ c" := (InContext c a b) : LangContext_scope.
 Open Scope LangContext_scope.
 
-Lemma InContextInverse {Γ s τ} (ing: s∷τ ∈ Γ) (noting: s ∉ Γ) : False.
-  induction ing; inversion noting => //.
+Fixpoint ContextLookup s Γ :=
+  match Γ with
+  | NullEnv => None
+  | ConsEnv s0 τ Γ0 =>
+    if (string_dec s s0) then
+      Some τ
+    else ContextLookup s Γ0
+  | ShadowEnv Γ0 Γ1 =>
+    if (ContextLookup s Γ1) is Some τ then
+      Some τ
+    else ContextLookup s Γ0
+  end.
+
+Functional Scheme ContextLookup_ind
+  := Induction for ContextLookup Sort Set.
+
+Lemma InContextPn Γ s : s ∉ Γ <-> (ContextLookup s Γ = None).
+  split.
+  - elim => //=.
+    + move => s1 s2. case (string_dec s1 s2); cbn; done.
+    + move => s0 Γ1 Γ2 notInLeft H notInRight H0; rewrite H; rewrite H0; done.
+  - functional induction (ContextLookup s Γ) => //=.
+    move/IHo => IH; move/(sumboolP (string_dec s s0)): e0; done.
+Qed.
+
+
+Lemma InContextP Γ s τ : s ∷ τ ∈ Γ <-> ContextLookup s Γ = Some τ.
+  split.
+  - elim => //=.
+    + move => s0; case (string_dec s0 s0); cbn; done.
+    + move => s1 τ1 s2; case (string_dec s1 s2); cbn; done.
+    + intros s0 τ0 Γ1 Γ2 inRight H; rewrite H; cbn; done.
+    + move => s0 τ0 Γ1 Γ2 /InContextPn ->; done.
+  - functional induction (ContextLookup s Γ) => //=.
+    + move/(sumboolP (string_dec s s0)): e0 => ->; case => ->; done.
+    + move/IHo => inSub; move/(sumboolP (string_dec s s0)): e0; done.
+    + move/InContextPn : e0 => notInLeft; move/IHo0; done.
+Qed.
+
+Lemma InContextInverse {Γ s τ} : s∷τ ∈ Γ -> s ∉ Γ -> False.
+  move => /InContextP a /InContextPn b; done.
 Qed.
 
 Lemma InContextOptions Γ s : (exists τ, s∷τ∈Γ) \/ (s∉Γ).
-  elim: Γ => //.
-  - move=> var typ ? [[τ ?] | ?]; case: (string_dec s var) => [ -> | ? ] //.
-  - move=> Γ1 [[τ1 ?] | ?] Γ2 [[τ2 ?] | ?] //.
+  case E : (ContextLookup s Γ).
+  - move/InContextP: E => //=.
+  - move/InContextPn: E => //=.
 Qed.
 
-Lemma InContextUnique {s τ1 τ2 Γ} (τin1: s ∷ τ1 ∈ Γ) (τin2: s ∷ τ2 ∈ Γ) : τ1=τ2.
-  elim: Γ τin1 τin2 => //.
-  - move=> var typ Γ impl; inversion 1; inversion 1 => //.
-  - move=> Γ1 impl1 Γ2 impl2; inversion 1; inversion 1 => //.
-    + case: (InContextInverse inRight notInRight).
-    + case: (InContextInverse inRight notInRight).
+Lemma InContextUnique {s τ1 τ2 Γ} : forall (τin1: s ∷ τ1 ∈ Γ) (τin2: s ∷ τ2 ∈ Γ), τ1=τ2.
+  move => /InContextP a /InContextP b; done.
 Qed.
 
 Lemma InConsEnvInversion {s τ τ' Γ} : s ∷ τ ∈ (ConsEnv s τ' Γ) -> τ=τ'.
   move=> ?; exact: InContextUnique.
 Qed.
 
-Lemma InSubConsEnvInversion {s s' Γ} (neq : s<>s') {τ τ'} : s ∷ τ ∈ (ConsEnv s' τ' Γ) -> s ∷ τ ∈ Γ.
+Lemma InSubConsEnvInversion {s s' Γ} (neq : s<>s') {τ τ'}
+  : s ∷ τ ∈ (ConsEnv s' τ' Γ) -> s ∷ τ ∈ Γ.
   inversion 1 => //.
 Qed.
 
@@ -79,13 +117,11 @@ Inductive EquivContext : ℾ -> ℾ -> Prop :=
 Lemma InterpretEquivContext' {Γ1 Γ2} : EquivContext Γ1 Γ2 -> forall {s τ}, s ∷ τ ∈ Γ1 -> s ∷ τ ∈ Γ2.
 Proof with done.
   elim => //.
-  - move=> Γ0 Γ3 rewr s τ; rewrite rewr...
   - move=> s0 τ0 Γ0 Γ3 EquivSub IH s1 τ1; case: (string_dec s1 s0) => [-> | neq] inH.
     + rewrite (InContextUnique inH (@InConsEnv s0 τ0 Γ0))...
     + constructor => //; apply IH.
       pose inSub := InSubConsEnvInversion neq inH...
   - move=> Γ0 Γ3 Γ' EquivSub IH s τ; inversion 1 => //.
-    apply IH in inLeft...
 Qed.
 
 Lemma EquivContextRefl Γ : EquivContext Γ Γ.
@@ -96,64 +132,40 @@ Lemma EquivContextSymm {Γ1 Γ2} : EquivContext Γ1 Γ2 -> EquivContext Γ2 Γ1.
   elim; done.
 Qed.
 
-Lemma InterpretEquivContext {Γ1 Γ2} : EquivContext Γ1 Γ2 -> forall {s τ}, s ∷ τ ∈ Γ1 <-> s ∷ τ ∈ Γ2.
-  move=> H s τ.
+Lemma InterpretEquivContext {Γ1 Γ2} : EquivContext Γ1 Γ2 -> (forall {s τ}, s ∷ τ ∈ Γ1 <-> s ∷ τ ∈ Γ2).
   split.
   - exact: InterpretEquivContext'.
   - apply: InterpretEquivContext'; exact: EquivContextSymm.
 Qed.
 
-Lemma EquivContextTrans {Γ1 Γ2 Γ3} (e12 : EquivContext Γ1 Γ2) (e23 : EquivContext Γ2 Γ3) : EquivContext Γ1 Γ3.
-  constructor => s τ; rewrite (InterpretEquivContext e12); rewrite (InterpretEquivContext e23); done.
+Lemma EquivContextP Γ1 Γ2 : EquivContext Γ1 Γ2 <-> forall s, ContextLookup s Γ1 = ContextLookup s Γ2.
+  split.
+  - move/InterpretEquivContext => equ s; move/(_ s): equ.
+    case: (InContextOptions Γ1 s) => [[τ i] | /InContextPn ne].
+    + move/(_ τ) => [/(_ i)/InContextP a b]; move/InContextP: i; done.
+    + case: (InContextOptions Γ2 s) => [[τ0 i0] | /InContextPn ne0].
+      * move => eq; move/eq/InContextP : i0 => i0; done.
+      * done.
+  - move=> eq; apply EquivIntro => s τ; split; rewrite 2! InContextP; done.
 Qed.
 
-Lemma EquivContextDoubleElim Γ s τ τ' : (EquivContext (ConsEnv s τ (ConsEnv s τ' Γ)) (ConsEnv s τ Γ)).
-  apply EquivIntro => s0 τ0.
-  case: (string_dec s0 s) => [-> | ?]; split => ing.
-  1,2: by rewrite (InConsEnvInversion ing).
-  - constructor => //; exact: (InSubConsEnvInversion _ (InSubConsEnvInversion _ ing)).
-  - constructor => //; constructor => //; exact: (InSubConsEnvInversion _ ing).
+Lemma EquivContextTrans {Γ1 Γ2 Γ3}
+  : EquivContext Γ1 Γ2 -> EquivContext Γ2 Γ3 -> EquivContext Γ1 Γ3.
+  rewrite 3! EquivContextP; done.
+Qed.
+
+Lemma EquivContextDoubleElim Γ s τ τ'
+  : (EquivContext (ConsEnv s τ (ConsEnv s τ' Γ)) (ConsEnv s τ Γ)).
+  rewrite EquivContextP /= => s0; destruct (string_dec s0 s); cbn; done.
 Qed.
 
 Lemma EquivContextReorder {Γ1 Γ2 s s'} :
-  (EquivContext Γ1 Γ2) -> s<>s' -> forall τ τ', (EquivContext (ConsEnv s τ (ConsEnv s' τ' Γ1)) (ConsEnv s' τ' (ConsEnv s τ Γ2))).
-Proof with done.
-  move=> H neq τ τ'.
-  constructor 1 => s0 τ0.
-  split; case: (string_dec s0 s) => [-> | nes].
-  - move=> inOne; rewrite (InConsEnvInversion inOne); constructor => //; constructor.
-  - case: (string_dec s0 s') => [<- | nes'] inOne.
-    + inversion inOne => //.
-      rewrite (InConsEnvInversion inSub)...
-    + inversion inOne => //; inversion inSub => //.
-      constructor => //; constructor => //.
-      move: inSub0; rewrite (InterpretEquivContext H)...
-Admitted.
-(*   -  *)
-(*     destruct (string_dec s0 s) as [-> | nes]. *)
-(*     + rewrite (InConsEnvInversion inOne). *)
-(*       apply (InSubConsEnv neq). *)
-(*       apply InConsEnv. *)
-(*     + destruct (string_dec s0 s') as [-> | nes']. *)
-(*       * pose (InSubConsEnvInversion nes inOne). *)
-(*         rewrite (InConsEnvInversion i). *)
-(*         done. *)
-(*       * apply (InSubConsEnv nes'). *)
-(*         apply (InSubConsEnv nes). *)
-(*         apply (InterpretEquivContext H). *)
-(*         exact (InSubConsEnvInversion nes' (InSubConsEnvInversion nes inOne)). *)
-(*   - destruct (string_dec s0 s) as [-> | nes]. *)
-(*     + rewrite (InConsEnvInversion (InSubConsEnvInversion neq inOne)). *)
-(*       apply InConsEnv. *)
-(*     + destruct (string_dec s0 s') as [-> | nes']. *)
-(*       * rewrite (InConsEnvInversion inOne). *)
-(*         apply (InSubConsEnv nes). *)
-(*         done. *)
-(*       * apply (InSubConsEnv nes). *)
-(*         apply (InSubConsEnv nes'). *)
-(*         apply (InterpretEquivContext H). *)
-(*         exact (InSubConsEnvInversion nes (InSubConsEnvInversion nes' inOne)). *)
-(* Qed. *)
+  (EquivContext Γ1 Γ2) -> s<>s' -> forall τ τ',
+      (EquivContext (ConsEnv s τ (ConsEnv s' τ' Γ1)) (ConsEnv s' τ' (ConsEnv s τ Γ2))).
+  rewrite EquivContextP => eq neq τ τ0.
+  rewrite EquivContextP => s0 /=.
+  destruct (string_dec s0 s); destruct (string_dec s0 s') => /=; done.
+Qed.
 
 Reserved Notation "a '⊢' b '∷' c" (at level 1, no associativity, b at next level).
 
@@ -175,18 +187,8 @@ Inductive Typechecks : ℾ -> 𝔼 -> 𝕋 -> Prop :=
 where "a '⊢' b '∷' c" := (Typechecks a b c).
 
 Lemma EquivContextAlsoTypechecks {Γ1 e τ} : Γ1 ⊢ e ∷ τ -> forall {Γ2}, EquivContext Γ1 Γ2 -> Γ2 ⊢ e ∷ τ.
-Proof with done.
-  intros H.
-  induction H; intros Γ2 equiv.
-  - constructor.
-  - rewrite (InterpretEquivContext equiv) in H...
-  - specialize (IHTypechecks1 Γ2 equiv).
-    specialize (IHTypechecks2 Γ2 equiv)...
-  - specialize (IHTypechecks1 Γ2 equiv).
-    specialize (IHTypechecks2 Γ2 equiv)...
-  - specialize (IHTypechecks (ConsEnv x τ (ConsEnv f (τ → τ') Γ2))).
-    pose (EquivCons x τ (EquivCons f (τ → τ') equiv)).
-    specialize (IHTypechecks e)...
+  elim; move=> *; econstructor => //.
+  match goal with | [ H: (EquivContext _ _) |- _] => apply/(InterpretEquivContext H) end; done.
 Qed.
 
 Fixpoint concatenation (l : list string) :=
@@ -196,81 +198,50 @@ Fixpoint concatenation (l : list string) :=
   end.
 
 Theorem appendEmpty s : (s ++ "")%string = s. 
-  induction s.
-  - simpl.
-    reflexivity. 
-  - rewrite <- IHs at 2.
-    simpl.
-    reflexivity.
+  elim: s => //=.
 Qed.
 
 Theorem appendSomething s s' : s' <> ""%string -> (s ++ s')%string <> s.
-Proof with congruence.
-  intros H.
-  induction s.
-  - simpl...
-  - simpl...
+  elim: s => //=; move=> a s H /H; done.
 Qed.
 
 Theorem appendAssociative s s' s'' : ((s ++ s') ++ s'')%string = (s ++ (s' ++ s''))%string.
-  induction s.
-  - simpl.
-    reflexivity.
-  - simpl.
-    rewrite IHs.
-    reflexivity.
+  elim: s => //=.
 Qed.
 
 Theorem diffLenDiffStr s : forall s', (String.length s) <> (String.length s') -> s <> s'.
-  induction s; destruct 2; simpl; contradiction.
+  induction s; destruct 2; done.
 Qed.
 
 Theorem sumAppendLength s s' : String.length (s ++ s') = String.length s + String.length s'.
-  induction s.
-  - simpl.
-    reflexivity.
-  - simpl.
-    congruence.
+  elim: s => //=.
 Qed.
 
 Theorem concatenationLength {l s} : s ∈ l -> (String.length s) <= (String.length (concatenation l)).
-  induction l.
-  - contradiction.
-  - intros H.
-    simpl.
-    rewrite sumAppendLength.
-    inversion H.
-    + subst; simpl.
-      apply Plus.le_plus_l.
-    + specialize (IHl H0).
-      rewrite PeanoNat.Nat.add_comm.
-      apply Plus.le_plus_trans.
-      assumption.
+  elim: l => //=.
+  move=> a l imp; rewrite sumAppendLength; case => [-> | /imp ne].
+  - exact: Plus.le_plus_l.
+  - rewrite PeanoNat.Nat.add_comm; exact: Plus.le_plus_trans.
 Qed.
 
 Theorem concatenationNotAny {l s} : s ∈ l -> s <> ((concatenation l) ++ "x")%string.
 Proof with done.
-  intros H.
-  pose (concatenationLength H).
+  move=> /concatenationLength H.
   pose (sumAppendLength (concatenation l) "x").
   simpl in e.
-  pose (Lt.le_lt_n_Sm _ _ l0).
-  rewrite PeanoNat.Nat.add_1_r in e.
-  rewrite <- e in l1.
+  pose (Lt.le_lt_n_Sm _ _ H).
+  rewrite -> PeanoNat.Nat.add_1_r in e.
+  rewrite <- e in l0.
   apply diffLenDiffStr.
-  exact (PeanoNat.Nat.lt_neq _ _ l1).
+  exact (PeanoNat.Nat.lt_neq _ _ l0).
 Qed.
 
 Theorem concatNotIn l : ~ ((concatenation l) ++ "x")%string ∈ l.
-  unfold not.
-  intros H.
-  pose (concatenationNotAny H).
-  contradiction.
+  move => /concatenationNotAny H; done.
 Qed.
 
 Theorem ListFinite (l : list string) : exists x, ~ (x ∈ l).
-  exists ((concatenation l) ++ "x")%string.
-  apply concatNotIn.
+  exists ((concatenation l) ++ "x")%string; apply concatNotIn.
 Qed.
 
 Fixpoint ContextVars (Γ : ℾ) :=
@@ -280,40 +251,20 @@ Fixpoint ContextVars (Γ : ℾ) :=
   | ShadowEnv Γ1 Γ2 => ((ContextVars Γ1) ++ (ContextVars Γ2))
   end.
 
-Theorem ConcatDomainIsDomain {Γ x} : (~ x ∈ (ContextVars Γ)) <-> x ∉ Γ.
+Functional Scheme ContextVars_ind
+  := Induction for ContextVars Sort Set.
+
+Theorem ContextDomainIsDomain {Γ x} : (~ x ∈ (ContextVars Γ)) <-> x ∉ Γ.
   split.
-  - induction Γ; simpl.
-    + constructor.
-    + intros H.
-      rewrite or_not_iff in H.
-      inversion H.
-      specialize (IHΓ H1).
-      done.
-    + intros H.
-      rewrite in_app_iff in H.
-      rewrite or_not_iff in H.
-      inversion H.
-      specialize (IHΓ1 H0).
-      specialize (IHΓ2 H1).
-      done.
-  - induction Γ; simpl; intros H; unfold not; intro H1.
-    + contradiction.
-    + inversion H1; inversion H; subst.
-      * contradiction.
-      * pose (IHΓ notInSub).
-        contradiction.
-    + inversion H; subst.
-      * rewrite in_app_iff in H1.
-        inversion H1.
-        -- pose (IHΓ1 notInLeft); contradiction.
-        -- pose (IHΓ2 notInRight); contradiction.
+  - functional induction (ContextVars Γ) => //=.
+    + rewrite in_app_iff or_not_iff => [[nin1 nin2]] //=.
+  - induction 1 => //=.
+    + rewrite in_app_iff or_not_iff //=.
 Qed.
 
 Theorem ContextFinite Γ : exists x, x ∉ Γ.
-  pose (ListFinite (ContextVars Γ)).
-  inversion e.
-  exists x.
-  now apply ConcatDomainIsDomain.
+  destruct (ListFinite (ContextVars Γ)).
+  exists x; move: H; rewrite ContextDomainIsDomain //=.
 Qed.
 
 Reserved Notation "Γ ⊢ e [ τ ] ∷ τ'" (at level 1, e at next level, τ at next level, τ' at next level).
