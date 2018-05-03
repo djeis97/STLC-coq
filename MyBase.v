@@ -31,7 +31,24 @@ Notation β2 := "β2"%string.
 Notation γ := "γ"%string.
 Notation γ1 := "γ1"%string.
 Notation γ2 := "γ2"%string.
-Ltac done := subst; (eassumption || easy || congruence || tauto || (econstructor; done)).
+
+Ltac ApplyOneHypothesis := match goal with H: _ |- _  => eapply H; clear H end.
+
+Ltac InvertReflections := repeat match goal with
+                                 | H : reflect _ true |- _ => inversion H; clear H
+                                 | H : reflect _ false |- _ => inversion H; clear H
+                                 end.
+
+Ltac elim_sumbool e := move/sumboolP: e.
+
+Ltac done := intros; subst; simpl; InvertReflections; (
+               match goal with
+               | H : _ |- ~ _ => (progress inversion 1); done
+               | R : reflect ?e _, H : ?e |- _ => move/R: H; done
+               end
+               || eassumption || easy || congruence || tauto
+               || ((progress ApplyOneHypothesis); done)
+               || (econstructor; done)).
 
 Ltac inv H := inversion H; subst; clear H.
 
