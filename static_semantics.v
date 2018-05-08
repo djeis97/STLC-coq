@@ -180,10 +180,10 @@ Inductive Typechecks : ℾ -> 𝔼 -> 𝕋 -> Prop :=
       (type1 : Γ ⊢ e1 ∷ (τ1 → τ2))
       (type2 : Γ ⊢ e2 ∷ τ1)
   : Γ ⊢ (AppExpr e1 e2) ∷ τ2
-| BSE {Γ f x τ body τ'}
+| BSE {Γ f x τarg τret body}
       (nefx : f <> x)
-      (type1 : (ConsEnv x τ (ConsEnv f (τ → τ') Γ)) ⊢ body ∷ τ')
-  : Γ ⊢ (AbsExpr f x τ body) ∷ (τ → τ')
+      (type1 : (ConsEnv x τarg (ConsEnv f (τarg → τret) Γ)) ⊢ body ∷ τret)
+  : Γ ⊢ (AbsExpr f x τarg τret body) ∷ (τarg → τret)
 where "a '⊢' b '∷' c" := (Typechecks a b c).
 
 Lemma EquivContextAlsoTypechecks {Γ1 e τ} : Γ1 ⊢ e ∷ τ -> forall {Γ2}, EquivContext Γ1 Γ2 -> Γ2 ⊢ e ∷ τ.
@@ -191,57 +191,48 @@ Lemma EquivContextAlsoTypechecks {Γ1 e τ} : Γ1 ⊢ e ∷ τ -> forall {Γ2}, 
   match goal with | [ H: (EquivContext _ _) |- _] => apply/(InterpretEquivContext H) end; done.
 Qed.
 
-Fixpoint concatenation (l : list string) :=
-  match l with
-  | nil => ""%string
-  | cons s l' => (s ++ (concatenation l'))%string
+Definition OptionLType_dec (s0 s1 : option LType) : {s0=s1} + {s0<>s1}.
+  decide equality.
+  apply LType_dec.
+Qed.
+
+Fixpoint typchk Γ e :=
+  match e with
+  | NatExpr _ => Some NatType
+  | VarExpr s => ContextLookup s Γ
+  | AddExpr l r => match (OptionLType_dec (typchk Γ l) (Some NatType),
+                         OptionLType_dec (typchk Γ r) (Some NatType)) with
+                  | ((left eq1, left eq2)) => Some NatType
+                  | _ => None
+                  end
+  | AppExpr f a => match ((typchk Γ f), (typchk Γ a)) with
+                  | ((Some (AbsType τa0 τret), Some τa1)) =>
+                    if (LType_dec τa0 τa1) then Some τret else None
+                  | _ => None
+                  end
+  | AbsExpr f x τarg τret body =>
+    if (string_dec f x) then
+      None
+    else 
+      if OptionLType_dec (typchk (ConsEnv x τarg (ConsEnv f (AbsType τarg τret) Γ)) body) (Some τret)
+      then Some (AbsType τarg τret) else None
   end.
 
-Theorem appendEmpty s : (s ++ "")%string = s. 
-  elim: s => //=.
-Qed.
-
-Theorem appendSomething s s' : s' <> ""%string -> (s ++ s')%string <> s.
-  elim: s => //=; move=> a s H /H; done.
-Qed.
-
-Theorem appendAssociative s s' s'' : ((s ++ s') ++ s'')%string = (s ++ (s' ++ s''))%string.
-  elim: s => //=.
-Qed.
-
-Theorem diffLenDiffStr s : forall s', (String.length s) <> (String.length s') -> s <> s'.
-  induction s; destruct 2; done.
-Qed.
-
-Theorem sumAppendLength s s' : String.length (s ++ s') = String.length s + String.length s'.
-  elim: s => //=.
-Qed.
-
-Theorem concatenationLength {l s} : s ∈ l -> (String.length s) <= (String.length (concatenation l)).
-  elim: l => //=.
-  move=> a l imp; rewrite sumAppendLength; case => [-> | /imp ne].
-  - exact: Plus.le_plus_l.
-  - rewrite PeanoNat.Nat.add_comm; exact: Plus.le_plus_trans.
-Qed.
-
-Theorem concatenationNotAny {l s} : s ∈ l -> s <> ((concatenation l) ++ "x")%string.
-Proof with done.
-  move=> /concatenationLength H.
-  pose (sumAppendLength (concatenation l) "x").
-  simpl in e.
-  pose (Lt.le_lt_n_Sm _ _ H).
-  rewrite -> PeanoNat.Nat.add_1_r in e.
-  rewrite <- e in l0.
-  apply diffLenDiffStr.
-  exact (PeanoNat.Nat.lt_neq _ _ l0).
-Qed.
-
-Theorem concatNotIn l : ~ ((concatenation l) ++ "x")%string ∈ l.
-  move => /concatenationNotAny H; done.
-Qed.
-
-Theorem ListFinite (l : list string) : exists x, ~ (x ∈ l).
-  exists ((concatenation l) ++ "x")%string; apply concatNotIn.
+Lemma TypechecksP {Γ e τ} : Γ ⊢ e ∷ τ <-> (typchk Γ e = Some τ).
+  split.
+  - induction 1 => //=; by [apply/InContextP | program_equiv].
+  - move: Γ τ; induction e; simpl => Γ τ eq.
+    + constructor; exact/InContextP.
+    + by injection eq.
+    + by destruct (OptionLType_dec (typchk Γ e1) (Some NatType));
+        destruct (OptionLType_dec (typchk Γ e2) (Some NatType));
+        try injection eq.
+    + by destruct (string_dec f x);
+        destruct (OptionLType_dec (typchk (ConsEnv x τarg (ConsEnv f (τarg → τret) Γ)) e) (Some τret)); simpl in *;
+          try injection eq.
+    + destruct (typchk Γ e1) eqn:eq1; destruct (typchk Γ e2) eqn:eq2 => //=.
+      all:try destruct l => //=.
+      destruct (LType_dec l1 l0); simpl in * => //=; by injection eq.
 Qed.
 
 Fixpoint ContextVars (Γ : ℾ) :=
@@ -267,46 +258,25 @@ Theorem ContextFinite Γ : exists x, x ∉ Γ.
   exists x; move: H; rewrite ContextDomainIsDomain //=.
 Qed.
 
-Reserved Notation "Γ ⊢ e [ τ ] ∷ τ'" (at level 1, e at next level, τ at next level, τ' at next level).
+Reserved Notation "Γ ⊢ E { τ } ∷ τ'" (at level 1, E at next level, τ at next level, τ' at next level).
 
 Inductive TypedEvalContext : ℾ -> EvaluationContext -> 𝕋 -> 𝕋 -> Prop :=
-| TypedHole Γ τ : Γ ⊢ Hole [τ] ∷ τ
-| TypedELAdd {Γ E e1 e2 x τ}
-  : Γ ⊢ e2 ∷ ℕ -> x ∉ Γ -> EvaluationContextFillsTo E x e1 ->
-    (ConsEnv x τ Γ) ⊢ e1 ∷ ℕ -> Γ ⊢ E [τ] ∷ ℕ ->
-    Γ ⊢ (EvalContextLAdd E e2) [τ] ∷ ℕ
-| TypedERadd {Γ E n e x τ}
-  : x ∉ Γ -> EvaluationContextFillsTo E x e ->
-    (ConsEnv x τ Γ) ⊢ e ∷ ℕ -> Γ ⊢ E [τ] ∷ ℕ ->
-    Γ ⊢ (EvalContextRAdd n E) [τ] ∷ ℕ
-| TypedELApp {Γ E e1 e2 τarg τret x τ}
-  : Γ ⊢ e2 ∷ τarg -> x ∉ Γ -> EvaluationContextFillsTo E x e1 ->
-    (ConsEnv x τ Γ) ⊢ e1 ∷ (τarg → τret) -> Γ ⊢ E [τ] ∷ (τarg → τret) ->
-    Γ ⊢ (EvalContextLApp E e2) [τ] ∷ τret
-| TypedERapp {fn arg τarg body τret Γ E e x τ}
-  : Γ ⊢ (AbsExpr fn arg τarg body) ∷ (τarg → τret) -> x ∉ Γ -> EvaluationContextFillsTo E x e ->
-    (ConsEnv x τ Γ) ⊢ e ∷ τarg -> Γ ⊢ E [τ] ∷ τarg ->
-    Γ ⊢ (EvalContextRApp fn arg τarg body E) [τ] ∷ τret
-where "Γ ⊢ e [ τ ] ∷ τ1" := (TypedEvalContext Γ e τ τ1).
+| TypedHole Γ τ : Γ ⊢ Hole {τ} ∷ τ
+| TypedELAdd {Γ E e x τ}
+  : Γ ⊢ e ∷ ℕ -> x ∉ Γ -> (ConsEnv x τ Γ) ⊢ E[x] ∷ ℕ -> Γ ⊢ E {τ} ∷ ℕ ->
+    Γ ⊢ (EvalContextLAdd E e) {τ} ∷ ℕ
+| TypedERadd {Γ E n x τ}
+  : x ∉ Γ -> (ConsEnv x τ Γ) ⊢ E[x] ∷ ℕ -> Γ ⊢ E {τ} ∷ ℕ ->
+    Γ ⊢ (EvalContextRAdd n E) {τ} ∷ ℕ
+| TypedELApp {Γ E e τarg τret x τ}
+  : Γ ⊢ e ∷ τarg -> x ∉ Γ -> (ConsEnv x τ Γ) ⊢ E[x] ∷ (τarg → τret) -> Γ ⊢ E {τ} ∷ (τarg → τret) ->
+    Γ ⊢ (EvalContextLApp E e) {τ} ∷ τret
+| TypedERapp {fn arg τarg body τret Γ E x τ}
+  : Γ ⊢ (AbsExpr fn arg τarg τret body) ∷ (τarg → τret) -> x ∉ Γ ->
+    (ConsEnv x τ Γ) ⊢ E[x] ∷ τarg -> Γ ⊢ E {τ} ∷ τarg ->
+    Γ ⊢ (EvalContextRApp fn arg τarg τret body E) {τ} ∷ τret
+where "Γ ⊢ e { τ } ∷ τ1" := (TypedEvalContext Γ e τ τ1).
 
-Lemma InterpretTypedEvalContext {Γ E τ τ1} (Etyp : Γ ⊢ E [τ] ∷ τ1) 
-  : forall e e1, Γ ⊢ e ∷ τ -> EvaluationContextFillsTo E e e1 -> Γ ⊢ e1 ∷ τ1.
-  induction Etyp; intros e0 e3 etyp ecf; inversion ecf.
-  - done.
-  - subst.
-    econstructor.
-    eapply IHEtyp; done.
-    assumption.
-  - subst.
-    econstructor.
-    done.
-    eapply IHEtyp; done. 
-  - subst.
-    econstructor.
-    eapply IHEtyp; done.
-    done.
-  - subst.
-    econstructor.
-    done.
-    eapply IHEtyp; done.
+Lemma InterpretTypedEvalContext {Γ E τ τ1} (Etyp : Γ ⊢ E {τ} ∷ τ1) {e} : Γ ⊢ e ∷ τ -> Γ ⊢ E[e] ∷ τ1.
+  induction Etyp; done.
 Qed.

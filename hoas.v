@@ -11,24 +11,25 @@ Import ListNotations.
 Reserved Notation "a '∈f' b" (at level 1, no associativity).
 Reserved Notation "a '∉f' b" (at level 1, no associativity).
 Reserved Notation "a '∈b' b" (at level 1, no associativity).
+Reserved Notation "a '∉b' b" (at level 1, no associativity).
 
 Inductive NotInFV : string -> 𝔼 -> Prop :=
 | NotFVVarExpr {s1 s2} (neq : s1 <> s2) : s1 ∉f s2
 | NotFVNatExpr {s} {n : nat} : s ∉f n
 | NotFVAddExpr {s e1 e2} (notInLeft : s ∉f e1) (notInRight : s ∉f e2) : s ∉f (e1 + e2)
 | NotFVAppExpr {s e1 e2} (notInLeft : s ∉f e1) (notInRight : s ∉f e2) : s ∉f (AppExpr e1 e2)
-| NotFVAbsExpru f x τ body {s} (notF : f <> s) (notX : x <> s) (notInBody : s ∉f body) :
-    s ∉f (AbsExpr f x τ body)
-| NotFVAbsExprx f x τ body : x ∉f (AbsExpr f x τ body)
-| NotFVAbsExprf f x τ body : f ∉f (AbsExpr f x τ body)
+| NotFVAbsExpru f x τarg τret body {s} (notF : f <> s) (notX : x <> s) (notInBody : s ∉f body) :
+    s ∉f (AbsExpr f x τarg τret body)
+| NotFVAbsExprx f x τarg τret body : x ∉f (AbsExpr f x τarg τret body)
+| NotFVAbsExprf f x τarg τret body : f ∉f (AbsExpr f x τarg τret body)
 where "s ∉f e" := (NotInFV s e) : FV_scope.
 
 Inductive InFV : string -> 𝔼 -> Prop :=
 | FVVarExpr {s} : s ∈f s
 | FVAddExprL {s e1 e2} (inSub: s ∈f e1) : s ∈f (e1 + e2)
 | FVAddExprR {s e1 e2} (inSub: s ∈f e2) : s ∈f (e1 + e2)
-| FVAbsExpr {f x τ body s} (notF : f <> s) (notX : x <> s) (inSub : s ∈f body) :
-    s ∈f (AbsExpr f x τ body)
+| FVAbsExpr {f x τarg τret body s} (notF : f <> s) (notX : x <> s) (inSub : s ∈f body) :
+    s ∈f (AbsExpr f x τarg τret body)
 | FVAppExprL {s e1 e2} (inSub: s ∈f e1) : s ∈f (AppExpr e1 e2)
 | FVAppExprR {s e1 e2} (inSub: s ∈f e2) : s ∈f (AppExpr e1 e2)
 where "s ∈f e" := (InFV s e) : FV_scope.
@@ -41,45 +42,24 @@ Fixpoint InFVb string expr :=
   | NatExpr _ => false
   | AddExpr e0 e1 => (InFVb string e0) || (InFVb string e1)
   | AppExpr e0 e1 => (InFVb string e0) || (InFVb string e1)
-  | AbsExpr f x _ body => if (string_dec string f) then
-                           false
-                         else if (string_dec string x) then
-                                false
-                              else (InFVb string body)
+  | AbsExpr f x _ _ body => if (string_dec string f) then
+                             false
+                           else if (string_dec string x) then
+                                  false
+                                else (InFVb string body)
   end.
 
-Functional Scheme InFVb_rec
+Functional Scheme InFVb_ind
   := Induction for InFVb Sort Set.
 
 Lemma InFVPn {s e} : reflect s ∉f e (~~ InFVb s e).
-  functional induction (InFVb s e) => //=.
-  - by elim_sumbool e0.
-  - by elim_sumbool e0.
-  - case E : (InFVb s e0 || InFVb s e1); constructor.
-    + move/orP: E => [i | i]; move: IHb IHb0; rewrite i //=.
-    + move/norP: E => [/IHb l /IHb0 r] //=.
-  - by elim_sumbool e0.
-  - by elim_sumbool e0; elim_sumbool e1.
-  - by elim_sumbool e0; elim_sumbool e1; case: (~~ InFVb s body) IHb.
-  - case E : (InFVb s e0 || InFVb s e1); constructor.
-    + move/orP: E => [i | i]; move: IHb IHb0; rewrite i //=.
-    + move/norP: E => [/IHb l /IHb0 r] //=.
+  apply/(iffP idP); functional induction (InFVb s e);
+    elim_sumbools string_dec => //=; by [move/norP | inversion 1 => //=; apply/norP].
 Qed.
 
 Lemma InFVP {s e} : reflect s ∈f e (InFVb s e).
-  functional induction (InFVb s e).
-  - by elim_sumbool e0.
-  - by elim_sumbool e0.
-  - done.
-  - case E: (InFVb s e0 || InFVb s e1) => //=; constructor.
-    + move/orP: E => [/IHb l | /IHb0 r] //=.
-    + move/orP/or_not_iff: E => [l r]; inversion 1; move: inSub => //=.
-  - by elim_sumbool e0.
-  - by elim_sumbool e0; elim_sumbool e1.
-  - move: e0 e1 => /sumboolP ne0 /sumboolP ne1; case: (InFVb s body) IHb; done.
-  - case E: (InFVb s e0 || InFVb s e1) => //=; constructor.
-    + move/orP: E => [/IHb l | /IHb0 r] //=.
-    + move/orP/or_not_iff: E => [l r]; inversion 1; move: inSub => //=.
+  apply/(iffP idP); functional induction (InFVb s e);
+    elim_sumbools string_dec => //=; by [move/orP => [|] | inversion 1 => //=; apply/orP].
 Qed.
 
 Lemma InFVExclusive {s e} : s ∈f e -> s ∉f e -> False.
@@ -87,19 +67,54 @@ Lemma InFVExclusive {s e} : s ∈f e -> s ∉f e -> False.
 Qed.
 
 Lemma InFVOptions s e : s ∈f e \/ s ∉f e.
-  case E: (InFVb s e).
-  - by move/InFVP: E.
-  - by move/InFVPn: E.
+  case E: (InFVb s e); by [move/InFVP: E | move/InFVPn: E].
 Qed.
 
 Inductive InBV : string -> 𝔼 -> Prop :=
-| BVFName {f x τ body} : f ∈b (AbsExpr f x τ body)
-| BVArg {f x τ body} : x ∈b (AbsExpr f x τ body)
+| BVFName {f x τarg τret body} : f ∈b (AbsExpr f x τarg τret body)
+| BVArg {f x τarg τret body} : x ∈b (AbsExpr f x τarg τret body)
+| BVBody {s f x τarg τret body} (inSub: s ∈b body) : s ∈b (AbsExpr f x τarg τret body)
 | BVAddExprL {s e1 e2} (inSub: s ∈b e1) : s ∈b (e1 + e2)
 | BVAddExprR {s e1 e2} (inSub: s ∈b e2) : s ∈b (e1 + e2)
 | BVAppExprL {s e1 e2} (inSub: s ∈b e1) : s ∈b (AppExpr e1 e2)
 | BVAppExprR {s e1 e2} (inSub: s ∈b e2) : s ∈b (AppExpr e1 e2)
 where "x ∈b e" := (InBV x e).
+
+Inductive NotInBV s : 𝔼 -> Prop :=
+| NotBVAbsExpr {f x τarg τret body} (notF : s <> f) (notX : s <> x) (notSub : s ∉b body)
+  : s ∉b (AbsExpr f x τarg τret body)
+| NotBVAddExpr {e1 e2} (nsub1 : s ∉b e1) (nsub2: s ∉b e2)
+  : s ∉b (AddExpr e1 e2)
+| NotBVAppExpr {e1 e2} (nsub1 : s ∉b e1) (nsub2: s ∉b e2)
+  : s ∉b (AppExpr e1 e2)
+| NotBVNatExpr (n : nat) : s ∉b n
+| NotBVVarExpr (s0 : string) : s ∉b s0
+where "s ∉b e" := (NotInBV s e).
+
+Fixpoint InBVb s e :=
+  match e with
+  | VarExpr s => false
+  | NatExpr n => false
+  | AddExpr l r => (InBVb s l)||(InBVb s r)
+  | AppExpr l r => (InBVb s l)||(InBVb s r)
+  | AbsExpr f x τarg τret body =>
+    if (string_dec s f) then true
+    else if (string_dec s x) then true
+         else (InBVb s body)
+  end.
+
+Functional Scheme InBVb_ind
+  := Induction for InBVb Sort Set.
+
+Lemma InBVPn s e : reflect (s ∉b e) (~~ InBVb s e).
+  apply/(iffP idP); functional induction (InBVb s e);
+    elim_sumbools string_dec => //=; by [move/norP | inversion 1 => //=; apply/norP].
+Qed.
+
+Lemma InBVP s e : reflect (s ∈b e) (InBVb s e).
+  apply/(iffP idP); functional induction (InBVb s e);
+    elim_sumbools string_dec => //=; by [move/orP => [|] | inversion 1 => //=; apply/orP].
+Qed.
 
 Reserved Notation "[ a / s ] b = c" (at level 1, no associativity,
                                      a at next level, s at next level,
@@ -117,15 +132,15 @@ Inductive CAS : 𝔼 -> string -> 𝔼 -> 𝔼 -> Prop :=
           (LeftAppCAS : [e / s] e1 = e1')
           (RightAppCAS : [e / s] e2 = e2')
   : [e / s] (AppExpr e1 e2) = (AppExpr e1' e2')
-| AbsCASUnbound {e s f x τ body body'}
+| AbsCASUnbound {e s f x τarg τret body body'}
                 (notF : s <> f)
                 (notX : s <> x)
                 (fNotIn : f ∉f e)
                 (xNotIn : x ∉f e)
                 (bodyCAS : [e / s] body = body')
-  : [e / s] (AbsExpr f x τ body) = (AbsExpr f x τ body')
-| AbsCASF {e f x τ body} : [e / f] (AbsExpr f x τ body) = (AbsExpr f x τ body)
-| AbsCASX {e f x τ body} : [e / x] (AbsExpr f x τ body) = (AbsExpr f x τ body)
+  : [e / s] (AbsExpr f x τarg τret body) = (AbsExpr f x τarg τret body')
+| AbsCASF {e f x τarg τret body} : [e / f] (AbsExpr f x τarg τret body) = (AbsExpr f x τarg τret body)
+| AbsCASX {e f x τarg τret body} : [e / x] (AbsExpr f x τarg τret body) = (AbsExpr f x τarg τret body)
 where "[ a / s ] b = c" := (CAS a s b c).
 
 Inductive SafeToSubInto (e : 𝔼) : 𝔼 -> Prop :=
@@ -139,11 +154,11 @@ Inductive SafeToSubInto (e : 𝔼) : 𝔼 -> Prop :=
                        (safe1 : SafeToSubInto e e0)
                        (safe2 : SafeToSubInto e e1)
   : SafeToSubInto e (AppExpr e0 e1)
-| SafeToSubIntoAbExpr {f x τ body}
+| SafeToSubIntoAbExpr {f x τarg τret body}
                       (notFIn : f ∉f e)
                       (notXIn : x ∉f e)
                       (safe : SafeToSubInto e body)
-  : SafeToSubInto e (AbsExpr f x τ body).
+  : SafeToSubInto e (AbsExpr f x τarg τret body).
 
 Axiom AlwaysSafeToSubInto : forall e1 e2, SafeToSubInto e1 e2.
 
@@ -155,12 +170,12 @@ Lemma CASAlways {e1 x e} : SafeToSubInto e1 e -> exists e2, [e1 / x] e = e2.
   - move=> n; exists n => //.
   - move=> e0 e2 ? [x0 ?] ? [x1 ?]; exists (AddExpr x0 x1) => //.
   - move=> e0 e2 ? [x0 ?] ? [x1 ?]; exists (AppExpr x0 x1) => //.
-  - move=> f x0 τ body fni x0ni safe [x2 ?].
+  - move=> f x0 τarg τret body fni x0ni safe [x2 ?].
     case: (string_dec x f) => [-> | nef].
-    + exists (AbsExpr f x0 τ body) => //.
+    + exists (AbsExpr f x0 τarg τret body) => //.
     + case: (string_dec x x0) => [-> | nex0].
-      * exists (AbsExpr f x0 τ body) => //.
-      * exists (AbsExpr f x0 τ x2) => //.
+      * exists (AbsExpr f x0 τarg τret body) => //.
+      * exists (AbsExpr f x0 τarg τret x2) => //.
 Qed.
 
 Definition substitution_list := list (𝔼 * string).
@@ -171,6 +186,7 @@ Proof.
   - apply string_dec.
   - decide equality.
     + apply string_dec.
+    + decide equality.
     + decide equality.
     + decide equality.
     + apply string_dec.
@@ -196,7 +212,7 @@ Inductive AlphaEquiv : 𝔼 -> 𝔼 -> Prop :=
       (AEQac : a ≡α c)
       (AEQbd : b ≡α d)
   : (AppExpr a b) ≡α (AppExpr c d)
-| BAE {f f1 f2 x x1 x2 τ body1 body1' body2 body2'}
+| BAE {f f1 f2 x x1 x2 τarg τret body1 body1' body2 body2'}
       (FXDiff : f <> x)
       (FFresh1 : f ∉f body1)
       (FFresh2 : f ∉f body2)
@@ -205,7 +221,7 @@ Inductive AlphaEquiv : 𝔼 -> 𝔼 -> Prop :=
       (FCAS1 : [f / f1] body1 = body1')
       (FCAS2 : [f / f2] body2 = body2')
       (AEQ12 : body1' ≡α body2')
-  : (AbsExpr f1 x1 τ body1) ≡α (AbsExpr f2 x2 τ body2)
+  : (AbsExpr f1 x1 τarg τret body1) ≡α (AbsExpr f2 x2 τarg τret body2)
 where "a ≡α b" := (AlphaEquiv a b).
 
 Theorem AlphaEquivSymm {e1 e2} : e1 ≡α e2 -> e2 ≡α e1.
