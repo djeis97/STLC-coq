@@ -32,7 +32,7 @@ Notation γ := "γ"%string.
 Notation γ1 := "γ1"%string.
 Notation γ2 := "γ2"%string.
 
-Ltac ApplyOneHypothesis := match goal with H: _ |- _  => eapply H; clear H end.
+Ltac ApplyOneHypothesis := multimatch goal with H: _ |- _  => eapply H; clear H end.
 
 Ltac InvertReflections := repeat match goal with
                                  | H : reflect _ true |- _ => inversion H; clear H
@@ -40,6 +40,9 @@ Ltac InvertReflections := repeat match goal with
                                  end.
 
 Ltac elim_sumbool e := move/sumboolP: e.
+Ltac elim_sumbools dec := repeat match goal with
+                                 | H : context[dec _ _] |- _ => move/sumboolP in H
+                                 end.
 
 Ltac done := intros; subst; simpl; InvertReflections; (
                match goal with
@@ -51,4 +54,73 @@ Ltac done := intros; subst; simpl; InvertReflections; (
                || (econstructor; done)).
 
 Ltac inv H := inversion H; subst; clear H.
+
+Ltac dec_cases dec s l := match l with
+                          | ?s0::?l0 => case (dec s s0); dec_cases dec s l0
+                          | nil => idtac
+                          end.
+
+Ltac program_equiv_case_analysis :=
+  match goal with
+  | |- context[(if (is_left ?e) then _ else _)] => case e => ?; simpl
+  | |- context[(if ?e then _ else _)] => destruct e; simpl
+  | |- context[(match ?e with _ => _ end)] => destruct e; simpl
+  end.
+
+Ltac program_equiv := repeat program_equiv_case_analysis.
+
+Fixpoint concatenation (l : list string) :=
+  match l with
+  | nil => ""%string
+  | cons s l' => (s ++ (concatenation l'))%string
+  end.
+
+Theorem appendEmpty s : (s ++ "")%string = s. 
+  elim: s => //=.
+Qed.
+
+Theorem appendSomething s s' : s' <> ""%string -> (s ++ s')%string <> s.
+  elim: s => //=; move=> a s H /H; done.
+Qed.
+
+Theorem appendAssociative s s' s'' : ((s ++ s') ++ s'')%string = (s ++ (s' ++ s''))%string.
+  elim: s => //=.
+Qed.
+
+Theorem diffLenDiffStr s : forall s', (String.length s) <> (String.length s') -> s <> s'.
+  induction s; destruct 2; done.
+Qed.
+
+Theorem sumAppendLength s s' : String.length (s ++ s') = String.length s + String.length s'.
+  elim: s => //=.
+Qed.
+
+Theorem concatenationLength {l s} : s ∈ l -> (String.length s) <= (String.length (concatenation l)).
+  elim: l => //=.
+  move=> a l imp; rewrite sumAppendLength; case => [-> | /imp ne].
+  - exact: Plus.le_plus_l.
+  - rewrite PeanoNat.Nat.add_comm; exact: Plus.le_plus_trans.
+Qed.
+
+Theorem concatenationNotAny {l s0 s} : (0 < (String.length s0)) -> s ∈ l -> s <> ((concatenation l) ++ s0)%string.
+Proof with done.
+  move=> size /concatenationLength H.
+  pose (sumAppendLength (concatenation l) s0).
+  pose (Plus.plus_le_lt_compat _ _ _ _ H size).
+  rewrite <- e in l0.
+  apply diffLenDiffStr.
+  rewrite <- plus_n_O in l0.
+  exact (PeanoNat.Nat.lt_neq _ _ l0).
+Qed.
+
+Theorem concatNotIn l : forall s, (0 < (String.length s)) -> ~ ((concatenation l) ++ s)%string ∈ l.
+  move => s lt /concatenationNotAny H.
+  move/(_ s lt) in H.
+  done.
+Qed.
+
+Theorem ListFinite (l : list string) : exists x, ~ (x ∈ l).
+  exists ((concatenation l) ++ "x")%string; exact: concatNotIn.
+Qed.
+
 
