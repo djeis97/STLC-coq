@@ -62,10 +62,10 @@ Ltac dec_cases dec s l := match l with
                           end.
 
 Ltac program_equiv_case_analysis :=
-  match goal with
-  | |- context[(if (is_left ?e) then _ else _)] => case e => ?; simpl
-  | |- context[(if ?e then _ else _)] => destruct e; simpl
-  | |- context[(match ?e with _ => _ end)] => destruct e; simpl
+  multimatch goal with
+  | |- context[(if (_ ?e) then _ else _)] => destruct e eqn:?; simpl
+  | |- context[(if ?e then _ else _)] => destruct e eqn:?; simpl
+  | |- context[(match ?e with _ => _ end)] => destruct e eqn:?; simpl
   end.
 
 Ltac program_equiv := repeat program_equiv_case_analysis.
