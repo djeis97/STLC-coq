@@ -13,6 +13,11 @@ Lemma LType_dec : forall (τ1 τ2 : LType), {τ1=τ2} + {τ1 <> τ2}.
   decide equality.
 Defined.
 
+Definition OptionLType_dec (s0 s1 : option LType) : {s0=s1} + {s0<>s1}.
+  decide equality.
+  apply LType_dec.
+Defined.
+
 Bind Scope LType_scope with LType.
 Notation "'ℕ'" := NatType : LType_scope.
 Notation "a → b" := (AbsType a b) (at level 50, left associativity) : LType_scope.
