@@ -77,51 +77,39 @@ Fixpoint concatenation (l : list string) :=
   end.
 
 Theorem appendEmpty s : (s ++ "")%string = s. 
-  elim: s => //=.
+  by induction s.
 Qed.
 
 Theorem appendSomething s s' : s' <> ""%string -> (s ++ s')%string <> s.
-  elim: s => //=; move=> a s H /H; done.
+  by induction s.
 Qed.
 
 Theorem appendAssociative s s' s'' : ((s ++ s') ++ s'')%string = (s ++ (s' ++ s''))%string.
-  elim: s => //=.
+  by induction s.
 Qed.
 
 Theorem diffLenDiffStr s : forall s', (String.length s) <> (String.length s') -> s <> s'.
-  induction s; destruct 2; done.
+  by induction s.
 Qed.
 
 Theorem sumAppendLength s s' : String.length (s ++ s') = String.length s + String.length s'.
-  elim: s => //=.
+  by induction s.
 Qed.
 
 Theorem concatenationLength {l s} : s ∈ l -> (String.length s) <= (String.length (concatenation l)).
-  elim: l => //=.
-  move=> a l imp; rewrite sumAppendLength; case => [-> | /imp ne].
-  - exact: Plus.le_plus_l.
-  - rewrite PeanoNat.Nat.add_comm; exact: Plus.le_plus_trans.
+  by elim: l => //= a l imp; rewrite sumAppendLength; case => [-> | /imp ne].
 Qed.
 
 Theorem concatenationNotAny {l s0 s} : (0 < (String.length s0)) -> s ∈ l -> s <> ((concatenation l) ++ s0)%string.
-Proof with done.
-  move=> size /concatenationLength H.
-  pose (sumAppendLength (concatenation l) s0).
-  pose (Plus.plus_le_lt_compat _ _ _ _ H size).
-  rewrite <- e in l0.
-  apply diffLenDiffStr.
-  rewrite <- plus_n_O in l0.
-  exact (PeanoNat.Nat.lt_neq _ _ l0).
+  by move=> size /concatenationLength H; apply diffLenDiffStr; rewrite sumAppendLength.
 Qed.
 
 Theorem concatNotIn l : forall s, (0 < (String.length s)) -> ~ ((concatenation l) ++ s)%string ∈ l.
-  move => s lt /concatenationNotAny H.
-  move/(_ s lt) in H.
-  done.
+    by move => s lt /concatenationNotAny H.
 Qed.
 
 Theorem ListFinite (l : list string) : exists x, ~ (x ∈ l).
-  exists ((concatenation l) ++ "x")%string; exact: concatNotIn.
+  by exists ((concatenation l) ++ "x")%string; apply/concatNotIn.
 Qed.
 
 
