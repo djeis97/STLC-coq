@@ -1,4 +1,5 @@
 From Coq Require Import ssreflect ssrfun ssrbool Lists.List String Basics.
+Require Import Omega.
 Bind Scope MyListScope with list.
 Reserved Notation "a ∈ b" (at level 1, no associativity).
 Reserved Notation "a ∉ b" (at level 1, no associativity).
@@ -49,7 +50,7 @@ Ltac done := intros; subst; simpl; InvertReflections; (
                | H : _ |- ~ _ => (progress inversion 1); done
                | R : reflect ?e _, H : ?e |- _ => move/R: H; done
                end
-               || eassumption || easy || congruence || tauto
+               || eassumption || easy || congruence || (intuition (eauto 4; fail) || omega)
                || ((progress ApplyOneHypothesis); done)
                || (econstructor; done)).
 
