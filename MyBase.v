@@ -45,14 +45,30 @@ Ltac elim_sumbools dec := repeat match goal with
                                  | H : context[dec _ _] |- _ => move/sumboolP in H
                                  end.
 
-Ltac done := intros; subst; simpl; InvertReflections; (
-               match goal with
-               | H : _ |- ~ _ => (progress inversion 1); done
-               | R : reflect ?e _, H : ?e |- _ => move/R: H; done
-               end
-               || eassumption || easy || congruence || (intuition (eauto 4; fail) || omega)
-               || ((progress ApplyOneHypothesis); done)
-               || (econstructor; done)).
+Ltac split_iff := match goal with H: iff _ _ |- _ => case H end.
+Ltac split_iffs := repeat split_iff.
+
+Ltac program_equiv_case_analysis :=
+  lazymatch goal with
+  | |- context[(if (_ ?e) then _ else _)] => destruct e eqn:?; simpl
+  | |- context[(if ?e then _ else _)] => destruct e eqn:?; simpl
+  | |- context[(match ?e with _ => _ end)] => destruct e eqn:?; simpl
+  end.
+
+Ltac program_equiv := repeat program_equiv_case_analysis.
+
+Ltac done_rec := 
+  intros; subst; simpl in *; InvertReflections; split_iffs; (
+    match goal with
+    | H : _ |- ~ _ => (progress inversion 1); done_rec
+    | R : reflect ?e _, H : ?e |- _ => move/R in H; done_rec
+    | |- iff _ _ => split; inversion 1; done_rec
+    end
+    || eassumption || easy || congruence || (intuition (eauto 4; fail) || omega)
+    || ((progress ApplyOneHypothesis); done_rec)
+    || (econstructor; done_rec)).
+
+Ltac done := subst; simpl in *; repeat (program_equiv; intro); done_rec.
 
 Ltac inv H := inversion H; subst; clear H.
 
@@ -60,15 +76,6 @@ Ltac dec_cases dec s l := match l with
                           | ?s0::?l0 => case (dec s s0); dec_cases dec s l0
                           | nil => idtac
                           end.
-
-Ltac program_equiv_case_analysis :=
-  multimatch goal with
-  | |- context[(if (_ ?e) then _ else _)] => destruct e eqn:?; simpl
-  | |- context[(if ?e then _ else _)] => destruct e eqn:?; simpl
-  | |- context[(match ?e with _ => _ end)] => destruct e eqn:?; simpl
-  end.
-
-Ltac program_equiv := repeat program_equiv_case_analysis.
 
 Fixpoint concatenation (l : list string) :=
   match l with
