@@ -85,6 +85,20 @@ Lemma InSubConsEnvInversion {s s' Γ} (neq : s<>s') {τ τ'} : s ∷ τ ∈ (Con
   by inversion 1.
 Qed.
 
+Fixpoint ShadowEnv (Γ1 Γ2 : LangContext) :=
+  match Γ2 with
+  | NullEnv => Γ1
+  | ConsEnv x τ Γ2' => (ConsEnv x τ (ShadowEnv Γ1 Γ2'))
+  end.
+
+Functional Scheme ShadowEnv_ind := Induction for ShadowEnv Sort Set.
+
+Lemma ShadowEnvCorrect {Γ1 Γ2} : forall s τ, s ∷ τ ∈ (ShadowEnv Γ1 Γ2) -> s ∷ τ ∈ Γ2 \/ s ∉ Γ2 /\ s ∷ τ ∈ Γ1.
+  functional induction (ShadowEnv Γ1 Γ2); first done.
+  move=> s τ0; move/(_ s τ0) in IHl.
+  by case (string_dec s x) => [-> /InConsEnvInversion| ne /(InSubConsEnvInversion ne)].
+Qed.
+
 Inductive EquivContext : ℾ -> ℾ -> Prop :=
 | EquivIntro {Γ1 Γ2} : (forall s τ, s ∷ τ ∈ Γ1 <-> s ∷ τ ∈ Γ2) -> EquivContext Γ1 Γ2
 | EquivCons s τ {Γ1 Γ2} : EquivContext Γ1 Γ2 -> EquivContext (ConsEnv s τ Γ1) (ConsEnv s τ Γ2).

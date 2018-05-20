@@ -111,6 +111,7 @@ Lemma βPreservation {e e'} (estep : e ⥛β e') : forall τ (etyp : NullEnv ⊢
 Qed.
 
 Lemma Preservation {e e'} (estep : e ⥛ e') τ (etyp : NullEnv ⊢ e ∷ τ) : NullEnv ⊢ e' ∷ τ.
+  rewrite /ECSS in estep.
   inversion estep; subst.
   move: (DecompositionOfTypes E e1 etyp) => [? [/(βPreservation betaStep) ? ?]].
   exact/InterpretTypedEvalContext.
