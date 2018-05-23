@@ -48,6 +48,9 @@ Ltac elim_sumbools dec := repeat match goal with
 Ltac split_iff := match goal with H: iff _ _ |- _ => case H; clear H end.
 Ltac split_iffs := repeat split_iff.
 
+Ltac elim_exist := match goal with H: exists _, _ |- _ => case H; clear H end.
+Ltac elim_exists := repeat elim_exist.
+
 Ltac program_equiv_case_analysis :=
   lazymatch goal with
   | |- context[(if (_ ?e) then _ else _)] => destruct e eqn:?; simpl
@@ -58,7 +61,7 @@ Ltac program_equiv_case_analysis :=
 Ltac program_equiv := repeat program_equiv_case_analysis.
 
 Ltac done_rec := 
-  intros; subst; simpl in *; (
+  intros; subst; simpl in *; InvertReflections; split_iffs; elim_exists; (
     match goal with
     | H : _ |- ~ _ => (progress inversion 1); done_rec
     | R : reflect ?e _, H : ?e |- _ => move/R in H; done_rec
@@ -68,7 +71,8 @@ Ltac done_rec :=
     || ((progress ApplyOneHypothesis); done_rec)
     || (econstructor; done_rec)).
 
-Ltac done := subst; simpl in *; InvertReflections; split_iffs; repeat (program_equiv; intro); done_rec.
+Ltac done := subst; simpl in *; repeat (program_equiv; intro); done_rec.
+
 
 Ltac inv H := inversion H; subst; clear H.
 
