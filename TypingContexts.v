@@ -38,13 +38,10 @@ Open Scope LangContext_scope.
 
 Hint Constructors InContext NotInContext.
 
-Fixpoint ContextLookup s Γ :=
+Fixpoint ContextLookup s Γ {struct Γ} :=
   match Γ with
   | NullEnv => None
-  | ConsEnv s0 τ Γ0 =>
-    if (string_dec s s0) then
-      Some τ
-    else ContextLookup s Γ0
+  | ConsEnv s0 τ Γ0 => if (string_dec s s0) then (some τ) else (ContextLookup s Γ0)
   end.
 
 Functional Scheme ContextLookup_ind
@@ -81,8 +78,16 @@ Lemma InConsEnvInversion {s τ τ' Γ} (inCons: s ∷ τ ∈ (ConsEnv s τ' Γ))
   exact: InContextUnique.
 Qed.
 
+Hint Resolve @InConsEnvInversion.
+
 Lemma InSubConsEnvInversion {s s' Γ} (neq : s<>s') {τ τ'} : s ∷ τ ∈ (ConsEnv s' τ' Γ) -> s ∷ τ ∈ Γ.
   by inversion 1.
+Qed.
+
+Hint Resolve @InSubConsEnvInversion.
+
+Lemma InConsEnvOptions {s0 τ0 s1 τ1 Γ} (ing: s0 ∷ τ0 ∈ (ConsEnv s1 τ1 Γ)) : (s0 = s1 /\ τ0 = τ1) \/ (s0 <> s1 /\ s0 ∷ τ0 ∈ Γ).
+  by case : (string_dec s0 s1) ing.
 Qed.
 
 Fixpoint ShadowEnv (Γ1 Γ2 : LangContext) :=
@@ -100,26 +105,27 @@ Lemma ShadowEnvCorrect {Γ1 Γ2} : forall s τ, s ∷ τ ∈ (ShadowEnv Γ1 Γ2)
 Qed.
 
 Inductive EquivContext : ℾ -> ℾ -> Prop :=
-| EquivIntro {Γ1 Γ2} : (forall s τ, s ∷ τ ∈ Γ1 <-> s ∷ τ ∈ Γ2) -> EquivContext Γ1 Γ2
-| EquivCons s τ {Γ1 Γ2} : EquivContext Γ1 Γ2 -> EquivContext (ConsEnv s τ Γ1) (ConsEnv s τ Γ2).
+| EquivIntro {Γ1 Γ2} (eq: forall s τ, s ∷ τ ∈ Γ1 <-> s ∷ τ ∈ Γ2) : EquivContext Γ1 Γ2
+| EquivCons s τ {Γ1 Γ2} (eq: EquivContext Γ1 Γ2) : EquivContext (ConsEnv s τ Γ1) (ConsEnv s τ Γ2).
 
-Lemma InterpretEquivContext' {Γ1 Γ2} : EquivContext Γ1 Γ2 -> forall {s τ}, s ∷ τ ∈ Γ1 -> s ∷ τ ∈ Γ2.
-  elim => //.
-  - move=> s0 τ0 Γ0 Γ3 EquivSub IH s1 τ1; case: (string_dec s1 s0) => [-> | neq] inH.
-    + by rewrite (InContextUnique inH InConsEnv).
-    + by move/(InSubConsEnvInversion _) in inH.
+Fixpoint InterpretEquivContext' {Γ1 Γ2} (eq: EquivContext Γ1 Γ2) {s τ} (in1: s ∷ τ ∈ Γ1) : s ∷ τ ∈ Γ2.
+  destruct eq;[done|by decompose [and or] (InConsEnvOptions in1)].
 Qed.
 
 Lemma EquivContextRefl Γ : EquivContext Γ Γ. done. Qed.
 
-Lemma EquivContextSymm {Γ1 Γ2} : EquivContext Γ1 Γ2 -> EquivContext Γ2 Γ1. by elim. Qed.
+Fixpoint EquivContextSymm {Γ1 Γ2} (eq: EquivContext Γ1 Γ2) : EquivContext Γ2 Γ1.
+  refine (match eq with
+          | EquivIntro eq0 => EquivIntro (fun s τ => (symmetry (eq0 s τ)))
+          | EquivCons s τ eq0 => EquivCons s τ (EquivContextSymm _ _ eq0)
+          end).
+Qed.
 
 Lemma InterpretEquivContext {Γ1 Γ2} : EquivContext Γ1 Γ2 -> (forall {s τ}, s ∷ τ ∈ Γ1 <-> s ∷ τ ∈ Γ2).
   by split; apply/InterpretEquivContext';[|apply/EquivContextSymm].
 Qed.
 
-Lemma EquivContextTrans {Γ1 Γ2 Γ3}
-  : EquivContext Γ1 Γ2 -> EquivContext Γ2 Γ3 -> EquivContext Γ1 Γ3.
+Lemma EquivContextTrans {Γ1 Γ2 Γ3} : EquivContext Γ1 Γ2 -> EquivContext Γ2 Γ3 -> EquivContext Γ1 Γ3.
   move=> /InterpretEquivContext ? /InterpretEquivContext ?; exact/EquivIntro.
 Qed.
 
@@ -129,8 +135,7 @@ Add Parametric Relation : LangContext EquivContext
     transitivity proved by @EquivContextTrans
       as EquivContext_rel.
 
-Add Parametric Morphism s : (ContextLookup s) with signature
-    (EquivContext) ==> (eq) as ContextLookup_mor.
+Add Parametric Morphism s : (ContextLookup s) with signature (EquivContext) ==> (eq) as ContextLookup_mor.
   move=> Γ1 Γ2 /InterpretEquivContext/(_ s).
   case: (InContextOptions Γ1 s) => [[τ i] | /InContextPn ne].
   + by move/(_ τ) => [/(_ i)/InContextP a b]; move/InContextP: i.
@@ -143,14 +148,14 @@ Lemma EquivContextP Γ1 Γ2 : EquivContext Γ1 Γ2 <-> forall s, ContextLookup s
   - by move=> eq; apply EquivIntro => *; rewrite ! InContextP.
 Qed.
 
+
 Lemma EquivContextDoubleElim Γ s τ τ'
   : (EquivContext (ConsEnv s τ (ConsEnv s τ' Γ)) (ConsEnv s τ Γ)).
   by rewrite EquivContextP /= => ?; program_equiv.
 Qed.
 
 Lemma EquivContextReorder {Γ1 Γ2 s s'} :
-  (EquivContext Γ1 Γ2) -> s<>s' -> forall τ τ',
-      (EquivContext (ConsEnv s τ (ConsEnv s' τ' Γ1)) (ConsEnv s' τ' (ConsEnv s τ Γ2))).
+  (EquivContext Γ1 Γ2) -> s<>s' -> forall τ τ', (EquivContext (ConsEnv s τ (ConsEnv s' τ' Γ1)) (ConsEnv s' τ' (ConsEnv s τ Γ2))).
   by move=> /EquivContextP *; apply/EquivContextP =>* /=; program_equiv.
 Qed.
 
@@ -175,11 +180,8 @@ Inductive SubContext : ℾ -> ℾ -> Prop :=
 | SubIntro {Γ1 Γ2} : (forall {s τ}, s ∷ τ ∈ Γ1 -> s ∷ τ ∈ Γ2) -> SubContext Γ1 Γ2
 | SubCons s τ {Γ1 Γ2} : SubContext Γ1 Γ2 -> SubContext (ConsEnv s τ Γ1) (ConsEnv s τ Γ2).
 
-Lemma InterpretSubContext {Γ1 Γ2} : SubContext Γ1 Γ2 -> forall {s τ}, s ∷ τ ∈ Γ1 -> s ∷ τ ∈ Γ2.
-  induction 1 => s0 τ0; first done.
-  all:have: forall τ, ContextLookup s0 Γ1 = Some τ -> ContextLookup s0 Γ2 = Some τ
-        by move => ? /InContextP ?; apply/InContextP.
-  all:by move=> IH /InContextP in1; apply/InContextP; move: in1 => /=; program_equiv.
+Fixpoint InterpretSubContext {Γ1 Γ2} (eq : SubContext Γ1 Γ2) {s τ} (in1: s ∷ τ ∈ Γ1) {struct eq} : s ∷ τ ∈ Γ2.
+  destruct eq;[done|by decompose [and or] (InConsEnvOptions in1)].
 Qed.
 
 Lemma SubContextRefl Γ : SubContext Γ Γ. done. Qed.
@@ -208,24 +210,24 @@ Add Parametric Relation : LangContext SubContext
 Reserved Notation "a ≡ b % c" (at level 1, b at next level).
 
 Inductive ContextCongruenceModuloS : ℾ -> ℾ -> string -> Prop :=
-| CongModIntro Γ1 Γ2 s :
-    (forall s', (s=s') \/ (forall τ, s' ∷ τ ∈ Γ1 <-> s' ∷ τ ∈ Γ2)) ->
-    (Γ1 ≡ Γ2 % s)
-| CongModCons {Γ1 Γ2 s s' τ} : Γ1 ≡ Γ2 % s -> (ConsEnv s' τ Γ1) ≡ (ConsEnv s' τ Γ2) % s
+| CongModIntro {Γ1 Γ2 s} (eq: forall s', (s=s') \/ (forall τ, s' ∷ τ ∈ Γ1 <-> s' ∷ τ ∈ Γ2)) : (Γ1 ≡ Γ2 % s)
+| CongModCons {Γ1 Γ2 s} s' τ (eq: Γ1 ≡ Γ2 % s) : (ConsEnv s' τ Γ1) ≡ (ConsEnv s' τ Γ2) % s
 where "a ≡ b % c" := (ContextCongruenceModuloS a b c).
 
 Lemma InEquivToNotInEquiv {s Γ1 Γ2} (eq1: forall τ, s ∷ τ ∈ Γ1 <-> s ∷ τ ∈ Γ2) : (s ∉ Γ1 <-> s ∉ Γ2).
-  split => nin1.
-  by case (InContextOptions Γ2 s) => //=; move=> [? /eq1/InContextInverse].
-  by case (InContextOptions Γ1 s) => //=; move=> [? /eq1/InContextInverse].
+  by split => nin1; [case (InContextOptions Γ2 s)|case (InContextOptions Γ1 s)] => //=; move=> [? /eq1/InContextInverse].
 Qed.
 
-Lemma InterpretCongMod' {Γ1 Γ2 s}
-  : Γ1 ≡ Γ2 % s -> forall s', (s=s') \/ (forall τ, s' ∷ τ ∈ Γ1 <-> s' ∷ τ ∈ Γ2).
-  intros H s'.
-  induction H; first done.
-  - decompose [or] IHContextCongruenceModuloS; first done.
-    right; split; inversion 1; done.
+Fixpoint InterpretCongMod' {Γ1 Γ2 s} (cong: Γ1 ≡ Γ2 % s) s' {struct cong} : (s=s') \/ (forall τ, s' ∷ τ ∈ Γ1 <-> s' ∷ τ ∈ Γ2).
+  refine (match cong with
+          | CongModIntro eq => (eq s')
+          | @CongModCons Γ10 Γ20 s00 s0 τ0 eq =>
+            match (InterpretCongMod' Γ10 Γ20 s00 eq s') with
+            | or_introl rewr => (or_introl rewr)
+            | or_intror rewr => (or_intror (fun τ0 => let: (conj rewr1 rewr2) := (rewr τ0) in _))
+            end
+          end).
+  split; move/InConsEnvOptions => [[-> ->]| []]; eauto.
 Qed.
 
 Lemma CongModP {Γ1 Γ2 s} :
