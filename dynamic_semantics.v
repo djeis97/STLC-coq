@@ -15,6 +15,7 @@ decide equality.
 - decide equality.
 - apply string_dec.
 - apply string_dec.
+- decide equality.
 Qed.
 
 Reserved Notation "a ⥛ b" (at level 1, no associativity).
@@ -25,7 +26,7 @@ Inductive SmallStepsBeta : 𝔼 -> 𝔼 -> Prop :=
 | PSSβ f x τarg τret body {e} (v : 𝕍 e) {body' body''}
        (CASx : [ e / x ] body = body')
        (CASf : [ (AbsExpr f x τarg τret body) / f ] body' = body'')
-  : (AppExpr (AbsExpr f x τarg τret body) e) ⥛β body''
+  : (BinExpr AppExpr (AbsExpr f x τarg τret body) e) ⥛β body''
 where "a ⥛β b" := (SmallStepsBeta a b).
 
 Inductive SmallSteps : 𝔼 -> 𝔼 -> Prop :=

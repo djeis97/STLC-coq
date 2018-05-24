@@ -45,8 +45,8 @@ Lemma Substitution {e1 Γ1 τ1} (typechks1 : Γ1 ⊢ e1 ∷ τ1) : forall e2 e3 
              (ConsEnv x τarg (ConsEnv f (τarg → τret) Γ2)) ⊢ e2 ∷ τ2 by done.
 Qed.
 
-Lemma CannonicalForms {e τ} :
-  NullEnv ⊢ e ∷ τ -> (𝕍 e) ->
+Lemma CannonicalForms {Γ e τ} :
+  Γ ⊢ e ∷ τ -> forall (v: 𝕍 e),
   match τ with
   | NatType => exists n, e = (NatExpr n)
   | (AbsType τ1 τ2) => exists f x body, f<>x /\ (e = (AbsExpr f x τ1 τ2 body))
@@ -54,47 +54,68 @@ Lemma CannonicalForms {e τ} :
   by case.
 Qed.
 
+Ltac Cannonicalize := repeat (match goal with
+                              | V: 𝕍 ?e, T: _ ⊢ ?e ∷ _ |- _ =>
+                                move: (CannonicalForms T V); intro; destruct V eqn:?
+                              end).
+
 Lemma TypedEvalContextInversion {Γ E τ0 τ} : Γ ⊢ E {τ0} ∷ τ -> exists x, x ∉ Γ /\ (ConsEnv x τ0 Γ) ⊢ E[x] ∷ τ.
-  by destruct 1; simpl; first by destruct (ContextFinite Γ).
+  by induction 1; simpl; first by destruct (ContextFinite Γ).
+Qed.
+
+Lemma TypedBinopExprInversion {Γ f e1 e2 τ} : Γ ⊢ (BinExpr f e1 e2) ∷ τ -> exists τ1 τ2, Γ ⊢ e1 ∷ τ1 /\ Γ ⊢ e2 ∷ τ2.
+  by inversion 1.
 Qed.
 
 Lemma DecompositionOfTypes E : forall Γ e0 τ, Γ ⊢ E[e0] ∷ τ -> exists τ1, Γ ⊢ e0 ∷ τ1 /\ Γ ⊢ E {τ1} ∷ τ.
   induction E; intros; simpl in *; first done.
-  all:inversion H.
+  all: inversion H.
   - by move/IHE: type1 => [τx [? b]]; move:(TypedEvalContextInversion b) => [? [? ?]].
-  - by move/IHE: type2 => [τx [? b]]; move:(TypedEvalContextInversion b) => [? [? ?]].
   - by move/IHE: type1 => [τx [? b]]; move:(TypedEvalContextInversion b) => [? [? ?]].
-  - by inversion type1; move/IHE: type2 => [τx [? b]]; move:(TypedEvalContextInversion b) => [? [? ?]].
+  - move/IHE: type2 => [τx [? b]]; move:(TypedEvalContextInversion b) => [? [? ?]].
+    by Cannonicalize.
+  - move/IHE: type2 => [τx [? b]]; move:(TypedEvalContextInversion b) => [? [? ?]].
+    Cannonicalize; first done.
+    intros; elim_exists.
+    destruct H5.
+    injection H6.
+    done.
 Qed.
 
 Definition CanStep e := exists e', e ⥛ e'.
-Definition CanStepβ e := exists E e0 e1, e=E[e0] /\ e0 ⥛β e1.
+Definition CanStepEβ e := exists E e0 e1, e=E[e0] /\ e0 ⥛β e1.
+Definition CanStepβ e := exists e', e ⥛β e'.
 Definition NotStuck e := 𝕍 e \/ (CanStep e).
+Definition NotStuckEβ e := 𝕍 e \/ (CanStepEβ e).
 Definition NotStuckβ e := 𝕍 e \/ (CanStepβ e).
 
 Hint Constructors EvaluationContext.
 
-Lemma Progressβ : forall {e τ} (ety: NullEnv ⊢ e ∷ τ), NotStuckβ e.
-  elim => //=.
-  - move=> x τ; inversion 1; inversion H1.
-  - move => e1 H1 e2 H2 τ; inversion 1; right.
-    move/(_ NatType type1): H1 => [/(CannonicalForms type1)-[n1 ->]| [E1 [e11 [e12 [-> step1]]]]].
-    all:move/(_ NatType type2): H2 => [/(CannonicalForms type2)-[n2 ->]| [E2 [e21 [e22 [-> step2]]]]].
-    + by exists Hole; exists (AddExpr n1 n2); exists (NatExpr (n1 + n2)).
-    + by exists (EvalContextRAdd n1 E2).
-    + by exists (EvalContextLAdd E1 n2).
-    + by exists (EvalContextLAdd E1 (E2 [e21])).
-  - move => e1 H1 e2 H2 τ; inversion 1; right.
-    move/(_ (AbsType τ1 τ) type1): H1
-    => [/(CannonicalForms type1)-[f [x [body [nefx ->]]]] | [E1 [e11 [e12 [-> step1]]]]].
-    all:move/(_ τ1 type2): H2 => [v2| [E2 [e21 [e22 [-> step2]]]]].
-    + exists Hole; exists (AppExpr (AbsExpr f x τ1 τ body) e2); simpl.
-      move:(@CASAlways e2 x body (AlwaysSafeToSubInto _ _)) => [body' eq].
-      move:(@CASAlways (AbsExpr f x τ1 τ body) f body' (AlwaysSafeToSubInto _ _)) => [body'' eq'].
-      done.
-    + by exists (EvalContextRApp f x τ1 τ body E2).
-    + by exists (EvalContextLApp E1 e2).
-    + by exists (EvalContextLApp E1 (E2 [e21])).
+Ltac CAS := apply/CASAlways/AlwaysSafeToSubInto.
+
+Lemma ProgressApp {Γ e1 e2 τ} : Γ ⊢ (BinExpr AppExpr e1 e2) ∷ τ -> (𝕍 e1) -> (𝕍 e2) -> exists e, (BinExpr AppExpr e1 e2) ⥛β e.
+  inversion 1.
+  move/(CannonicalForms type1) => [f [x [body [? ?]]]] v2.
+  have: exists b, [e2 / x] body = b by CAS.
+  move => [x0 ?].
+  have: exists b, [(AbsExpr f x τ1 τ body) / f] x0 = b by CAS.
+  done.
+Qed.
+
+Lemma ProgressBin : forall f {e1 e2 Γ τ} (typ: Γ ⊢ (BinExpr f e1 e2) ∷ τ) (v1 : 𝕍 e1) (v2 : 𝕍 e2), NotStuckβ (BinExpr f e1 e2).
+  case => e1 e2 Γ τ typ v1 v2.
+  - by inversion typ; Cannonicalize.
+  - right; exact/ProgressApp.
+Qed.
+
+Lemma Progressβ : forall {e τ} (ety: NullEnv ⊢ e ∷ τ), NotStuckEβ e.
+  induction e => τ //=.
+  - inversion 1; inversion H1.
+  - move=>ty; move/TypedBinopExprInversion: (ty) => [τ1 [τ2 [/IHe1-[v1|p1] /IHe2 ns2]]].
+    + case: ns2 => [v2|p2].
+      * by move: (ProgressBin ty v1 v2) => [//= | [e s]]; right; exists Hole.
+      * by move: p2 => [E [e0 [e3 [-> s]]]]; right; exists (EvalContextBinR f v1 E).
+    + by move: p1 => [E [e0 [e3 [-> s]]]]; right; exists (EvalContextBinL f E e2).
 Qed.
 
 Lemma Progress {e} : forall {τ} (etyp: NullEnv ⊢ e ∷ τ), (NotStuck e).
@@ -110,11 +131,12 @@ Lemma βPreservation {e e'} (estep : e ⥛β e') : forall τ (etyp : NullEnv ⊢
   by apply/Substitution; first by apply/Substitution.
 Qed.
 
+Hint Resolve βPreservation.
+
+Hint Resolve InterpretTypedEvalContext.
+
 Lemma Preservation {e e'} (estep : e ⥛ e') τ (etyp : NullEnv ⊢ e ∷ τ) : NullEnv ⊢ e' ∷ τ.
-  rewrite /ECSS in estep.
-  inversion estep; subst.
-  move: (DecompositionOfTypes E e1 etyp) => [? [/(βPreservation betaStep) ? ?]].
-  exact/InterpretTypedEvalContext.
+  by inversion estep; subst; move: (DecompositionOfTypes E e1 etyp).
 Qed.
 
 Hint Resolve Preservation.

@@ -24,7 +24,7 @@ Inductive Typechecks : ℾ -> 𝔼 -> 𝕋 -> Prop :=
 | PSE {Γ e1 e2 τ1 τ2}
       (type1 : Γ ⊢ e1 ∷ (τ1 → τ2))
       (type2 : Γ ⊢ e2 ∷ τ1)
-  : Γ ⊢ (AppExpr e1 e2) ∷ τ2
+  : Γ ⊢ (BinExpr AppExpr e1 e2) ∷ τ2
 | BSE {Γ f x τarg τret body}
       (nefx : f <> x)
       (type1 : (ConsEnv x τarg (ConsEnv f (τarg → τret) Γ)) ⊢ body ∷ τret)
@@ -55,16 +55,16 @@ Fixpoint typchk Γ e :=
   match e with
   | NatExpr _ => Some NatType
   | VarExpr s => ContextLookup s Γ
-  | AddExpr l r => match (OptionLType_dec (typchk Γ l) (Some NatType),
-                         OptionLType_dec (typchk Γ r) (Some NatType)) with
-                  | ((left eq1, left eq2)) => Some NatType
-                  | _ => None
-                  end
-  | AppExpr f a => match ((typchk Γ f), (typchk Γ a)) with
-                  | ((Some (AbsType τa0 τret), Some τa1)) =>
-                    if (LType_dec τa0 τa1) then Some τret else None
-                  | _ => None
-                  end
+  | BinExpr AddExpr l r => match (OptionLType_dec (typchk Γ l) (Some NatType),
+                                 OptionLType_dec (typchk Γ r) (Some NatType)) with
+                          | ((left eq1, left eq2)) => Some NatType
+                          | _ => None
+                          end
+  | BinExpr AppExpr f a => match ((typchk Γ f), (typchk Γ a)) with
+                          | ((Some (AbsType τa0 τret), Some τa1)) =>
+                            if (LType_dec τa0 τa1) then Some τret else None
+                          | _ => None
+                          end
   | AbsExpr f x τarg τret body =>
     if (string_dec f x) then
       None
@@ -81,26 +81,18 @@ Lemma TypechecksP {Γ e τ} : Γ ⊢ e ∷ τ <-> (typchk Γ e = Some τ).
     + by case: eq.
     + move: eq; program_equiv; by [|case].
     + move: eq; program_equiv; by [|case].
-    + move: eq; program_equiv; by [|case].
 Qed.
 
 Reserved Notation "Γ ⊢ E { τ } ∷ τ'" (at level 1, E at next level, τ at next level, τ' at next level).
 
 Inductive TypedEvalContext : ℾ -> EvaluationContext -> 𝕋 -> 𝕋 -> Prop :=
 | TypedHole Γ τ : Γ ⊢ Hole {τ} ∷ τ
-| TypedELAdd {Γ E e x τ}
-  : Γ ⊢ e ∷ ℕ -> x ∉ Γ -> (ConsEnv x τ Γ) ⊢ E[x] ∷ ℕ -> Γ ⊢ E {τ} ∷ ℕ ->
-    Γ ⊢ (EvalContextLAdd E e) {τ} ∷ ℕ
-| TypedERadd {Γ E n x τ}
-  : x ∉ Γ -> (ConsEnv x τ Γ) ⊢ E[x] ∷ ℕ -> Γ ⊢ E {τ} ∷ ℕ ->
-    Γ ⊢ (EvalContextRAdd n E) {τ} ∷ ℕ
-| TypedELApp {Γ E e τarg τret x τ}
-  : Γ ⊢ e ∷ τarg -> x ∉ Γ -> (ConsEnv x τ Γ) ⊢ E[x] ∷ (τarg → τret) -> Γ ⊢ E {τ} ∷ (τarg → τret) ->
-    Γ ⊢ (EvalContextLApp E e) {τ} ∷ τret
-| TypedERapp {fn arg τarg body τret Γ E x τ}
-  : Γ ⊢ (AbsExpr fn arg τarg τret body) ∷ (τarg → τret) -> x ∉ Γ ->
-    (ConsEnv x τ Γ) ⊢ E[x] ∷ τarg -> Γ ⊢ E {τ} ∷ τarg ->
-    Γ ⊢ (EvalContextRApp fn arg τarg τret body E) {τ} ∷ τret
+| TypedELAdd {Γ E e τ} : Γ ⊢ e ∷ ℕ -> Γ ⊢ E {τ} ∷ ℕ -> Γ ⊢ (EvalContextBinL AddExpr E e) {τ} ∷ ℕ
+| TypedERadd {Γ E n τ} : Γ ⊢ E {τ} ∷ ℕ -> Γ ⊢ (EvalContextBinR AddExpr (NatValue n) E) {τ} ∷ ℕ
+| TypedELApp {Γ E e τarg τret τ} : Γ ⊢ e ∷ τarg -> Γ ⊢ E {τ} ∷ (τarg → τret) -> Γ ⊢ (EvalContextBinL AppExpr E e) {τ} ∷ τret
+| TypedERapp {fn arg τarg body τret Γ E τ}
+  : Γ ⊢ (AbsExpr fn arg τarg τret body) ∷ (τarg → τret) -> Γ ⊢ E {τ} ∷ τarg ->
+    Γ ⊢ (EvalContextBinR AppExpr (AbsValue fn arg τarg τret body) E) {τ} ∷ τret
 where "Γ ⊢ e { τ } ∷ τ1" := (TypedEvalContext Γ e τ τ1).
 
 Lemma InterpretTypedEvalContext {Γ E τ τ1} (Etyp : Γ ⊢ E {τ} ∷ τ1) {e} : Γ ⊢ e ∷ τ -> Γ ⊢ E[e] ∷ τ1.
