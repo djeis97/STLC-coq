@@ -48,7 +48,7 @@ Ltac elim_sumbools dec := repeat match goal with
 Ltac split_iff := match goal with H: iff _ _ |- _ => case H; clear H end.
 Ltac split_iffs := repeat split_iff.
 
-Ltac elim_exist := match goal with H: exists _, _ |- _ => case H; clear H end.
+Ltac elim_exist := match goal with H: exists _, _ |- _ => destruct H end.
 Ltac elim_exists := repeat elim_exist.
 
 Ltac program_equiv_case_analysis :=
