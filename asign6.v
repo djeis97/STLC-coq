@@ -70,16 +70,9 @@ Qed.
 Lemma DecompositionOfTypes E : forall Γ e0 τ, Γ ⊢ E[e0] ∷ τ -> exists τ1, Γ ⊢ e0 ∷ τ1 /\ Γ ⊢ E {τ1} ∷ τ.
   induction E; intros; simpl in *; first done.
   all: inversion H.
-  - by move/IHE: type1 => [τx [? b]]; move:(TypedEvalContextInversion b) => [? [? ?]].
-  - by move/IHE: type1 => [τx [? b]]; move:(TypedEvalContextInversion b) => [? [? ?]].
-  - move/IHE: type2 => [τx [? b]]; move:(TypedEvalContextInversion b) => [? [? ?]].
-    by Cannonicalize.
-  - move/IHE: type2 => [τx [? b]]; move:(TypedEvalContextInversion b) => [? [? ?]].
-    Cannonicalize; first done.
-    intros; elim_exists.
-    destruct H5.
-    injection H6.
-    done.
+  1,2: by move/IHE: type1 => [τx [? b]]; move:(TypedEvalContextInversion b).
+  1,2: move/IHE: type2 => [τx [? b]]; move:(TypedEvalContextInversion b); Cannonicalize => //=.
+  by intros; elim_exists; case: H6 => ?; case.
 Qed.
 
 Definition CanStep e := exists e', e ⥛ e'.
