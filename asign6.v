@@ -246,44 +246,6 @@ Definition Evaluate0 (e : 𝔼) : Stream 𝔼.
            end) (eq_refl (typchk NullEnv e))).
   by move/TypechecksP in eq; apply/Evaluate.
 Defined.
-Set Printing Implicit.
-Eval vm_compute in (approx (Evaluate0 (BinExpr AddExpr 5 5)) 3).
-match
-         (let
-          'exist _ e0 step :=
-           ProgressBin (iffRL (P:=NullEnv ⊢ (5 + 5) ∷ ℕ) TypechecksP (erefl (Some NatType))) (NatValue 5) (NatValue 5) in
-           SCons e0
-             (Evaluate
-                (exist [eta Typechecks NullEnv e0] NatType
-                   (InterpretTypedEvalContext (TypedHole NullEnv ℕ)
-                      (βPreservation step (iffRL (P:=NullEnv ⊢ (5 + 5) ∷ ℕ) TypechecksP (erefl (Some NatType))))))))
-       with
-       | SNil _ => nil
-       | SCons h t =>
-           h :: match t with
-                | SNil _ => nil
-                | SCons h0 t0 => h0 :: match t0 with
-                                       | SNil _ => nil
-                                       | SCons h1 _ => h1 :: nil
-                                       end
-                end
-       end
-Eval eta in (match
-                  (let 'exist _ e0 step :=
-                       ProgressBin (iffRL (P:=NullEnv ⊢ (5 + 5) ∷ ℕ) TypechecksP (erefl (Some NatType))) (NatValue 5) (NatValue 5) in
-                   SCons e0
-                         (Evaluate
-                            (Preservation0 (ECSS step)
-                                           (exist (fun x => Typechecks NullEnv Hole [(5 + 5)] x) NatType
-                                                  (iffRL (P:=NullEnv ⊢ (5 + 5) ∷ ℕ) TypechecksP (erefl (Some NatType)))))))
-          with
-          | SNil _ => nil
-          | SCons h t => h :: match t with
-                             | SNil _ => nil
-                             | SCons h0 _ => h0 :: nil
-                             end
-                end).
-
 
 
 
