@@ -51,7 +51,6 @@ Add Parametric Morphism : Typechecks with signature
   by induction typechecks1 => // Γ2 /InterpretSubContext.
 Qed.
 
-Fixpoint typchk Γ e :=
 Function typchk Γ e :=
   match e with
   | NatExpr _ => Some NatType
@@ -82,8 +81,8 @@ Function typchk Γ e :=
 Lemma TypechecksP {Γ e τ} : Γ ⊢ e ∷ τ <-> (typchk Γ e = Some τ).
   split.
   - induction 1 => //=; by [apply/InContextP | program_equiv].
-Qed.
   - move: τ; functional induction (typchk Γ e) => τ //=; by [case | move/InContextP].
+Defined.
 
 Reserved Notation "Γ ⊢ E { τ } ∷ τ'" (at level 1, E at next level, τ at next level, τ' at next level).
 
@@ -99,4 +98,4 @@ where "Γ ⊢ e { τ } ∷ τ1" := (TypedEvalContext Γ e τ τ1).
 
 Lemma InterpretTypedEvalContext {Γ E τ τ1} (Etyp : Γ ⊢ E {τ} ∷ τ1) {e} : Γ ⊢ e ∷ τ -> Γ ⊢ E[e] ∷ τ1.
   induction Etyp; done.
-Qed.
+Defined.
