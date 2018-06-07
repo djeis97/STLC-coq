@@ -52,36 +52,38 @@ Add Parametric Morphism : Typechecks with signature
 Qed.
 
 Fixpoint typchk Γ e :=
+Function typchk Γ e :=
   match e with
   | NatExpr _ => Some NatType
   | VarExpr s => ContextLookup s Γ
-  | BinExpr AddExpr l r => match (OptionLType_dec (typchk Γ l) (Some NatType),
-                                 OptionLType_dec (typchk Γ r) (Some NatType)) with
-                          | ((left eq1, left eq2)) => Some NatType
-                          | _ => None
-                          end
-  | BinExpr AppExpr f a => match ((typchk Γ f), (typchk Γ a)) with
-                          | ((Some (AbsType τa0 τret), Some τa1)) =>
-                            if (LType_dec τa0 τa1) then Some τret else None
-                          | _ => None
-                          end
+  | BinExpr AddExpr l r =>
+    if ((typchk Γ l), (typchk Γ r)) is (Some τl, Some τr) then
+      if LType_dec τl NatType is left eq1 then
+        if LType_dec τr NatType is left eq2 then
+          Some NatType
+        else None
+      else None
+    else None
+  | BinExpr AppExpr f a => if ((typchk Γ f), (typchk Γ a)) is ((Some (AbsType τa0 τret), Some τa1)) then
+                            if (LType_dec τa0 τa1) is left eql then
+                              Some τret
+                            else None
+                          else None
   | AbsExpr f x τarg τret body =>
-    if (string_dec f x) then
-      None
-    else 
-      if OptionLType_dec (typchk (ConsEnv x τarg (ConsEnv f (AbsType τarg τret) Γ)) body) (Some τret)
-      then Some (AbsType τarg τret) else None
+    if (string_dec f x) is right nefx then
+      if (typchk (ConsEnv x τarg (ConsEnv f (AbsType τarg τret) Γ)) body) is Some τret0 then
+        if (LType_dec τret τret0) is left eq2 then
+          Some (AbsType τarg τret)
+        else None
+      else None
+    else None
   end.
 
 Lemma TypechecksP {Γ e τ} : Γ ⊢ e ∷ τ <-> (typchk Γ e = Some τ).
   split.
   - induction 1 => //=; by [apply/InContextP | program_equiv].
-  - move: Γ τ; induction e; simpl => Γ τ eq.
-    + constructor; exact/InContextP.
-    + by case: eq.
-    + move: eq; program_equiv; by [|case].
-    + move: eq; program_equiv; by [|case].
 Qed.
+  - move: τ; functional induction (typchk Γ e) => τ //=; by [case | move/InContextP].
 
 Reserved Notation "Γ ⊢ E { τ } ∷ τ'" (at level 1, E at next level, τ at next level, τ' at next level).
 
