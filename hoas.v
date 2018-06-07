@@ -4,6 +4,7 @@ Require Import List.
 Require Import ListSet.
 Require Import String.
 Require Import Basics.
+Require Import Program.
 Require Import MyBase.
 Require Import lang.
 Import ListNotations.
@@ -146,20 +147,25 @@ Inductive SafeToSubInto (e : 𝔼) : 𝔼 -> Prop :=
 
 Axiom AlwaysSafeToSubInto : forall e1 e2, SafeToSubInto e1 e2.
 
-Lemma CASAlways {e1 x e} : SafeToSubInto e1 e -> exists e2, [e1 / x] e = e2.
-  elim.
-  - move=> x0; case: (string_dec x x0) => [-> | neq].
-    + exists e1 => //.
-    + exists x0 => //.
-  - move=> n; exists n => //.
-  - move=> f e0 e2 ? [x0 ?] ? [x1 ?]; exists (BinExpr f x0 x1) => //.
-  - move=> f x0 τarg τret body fni x0ni safe [x2 ?].
-    case: (string_dec x f) => [-> | nef].
-    + exists (AbsExpr f x0 τarg τret body) => //.
-    + case: (string_dec x x0) => [-> | nex0].
-      * exists (AbsExpr f x0 τarg τret body) => //.
-      * exists (AbsExpr f x0 τarg τret x2) => //.
-Qed.
+Obligation Tactic := program_simpl; try by [idtac | inversion safe].
+
+Program Fixpoint CASAlways x e e1 (safe: SafeToSubInto e1 e) {struct e} : {e2 | [e1 / x] e = e2} :=
+  match e with
+  | VarExpr x0 => match (string_dec x x0) with
+                 | left eqx => _
+                 | right neqx => _
+                 end
+  | NatExpr n => exist _ (NatExpr n) _
+  | BinExpr f e10 e20 => BinExpr f (CASAlways x e10 e1 _) (CASAlways x e20 e1 _)
+  | AbsExpr f arg τarg τret body =>
+    match (string_dec f x) with
+    | left eqf => (AbsExpr f arg τarg τret body)
+    | right neqf => match (string_dec arg x) with
+                   | left eqarg => (AbsExpr f arg τarg τret body)
+                   | right neqarg => (AbsExpr f arg τarg τret (CASAlways x body e1 _))
+                   end
+    end
+  end.
 
 Definition substitution_list := list (𝔼 * string).
 
