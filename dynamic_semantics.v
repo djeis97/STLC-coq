@@ -4,7 +4,6 @@ Require Import Coq.Lists.ListSet.
 Require Import MyBase.
 Require Import lang.
 Require Import hoas.
-Require Import static_semantics.
 Set Implicit Arguments.
 Import ListNotations.
 Definition expr_dec : forall e1 e2 : 𝔼, {e1 = e2} + {e1 <> e2}.
